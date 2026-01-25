@@ -129,8 +129,8 @@ async def handler(event, args):
 
             return await respond(
                 event,
-                "Update Available\n\n"
-                "Changelog:\n"
+                "**Update Available**\n\n"
+                "**Changelog**\n"
                 f"{changelog}\n\n"
                 "Run `.update now` to apply the update."
             )
