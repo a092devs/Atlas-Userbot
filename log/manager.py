@@ -1,15 +1,25 @@
+import os
 from db.core import db
 
 LOG_KEY = "log_chat_id"
+ENV_KEY = "LOG_CHANNEL_ID"
 
 
 def init():
-    # kv_store table is expected to exist
-    # This function exists to satisfy loader lifecycle
+    # Loader lifecycle hook
     pass
 
 
 def get_log_chat_id() -> int | None:
+    # 1️⃣ Environment variable override (Docker-friendly)
+    env_val = os.getenv(ENV_KEY)
+    if env_val:
+        try:
+            return int(env_val)
+        except Exception:
+            pass
+
+    # 2️⃣ Database-backed value
     row = db.execute(
         "SELECT value FROM kv_store WHERE key=?",
         (LOG_KEY,),
