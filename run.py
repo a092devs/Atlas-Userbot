@@ -17,6 +17,13 @@ from db.control import (
 )
 
 from core.version import get_version
+from db import apikeys
+
+from telethon.events import NewMessage
+from utils.formatting import human_time
+
+# AFK imports
+from plugins.system.afk import AFK, clear_afk
 
 
 # -------------------------------------------------
@@ -29,10 +36,6 @@ START_TIME = time.time()
 # Reconcile pending restart / update after reboot
 # -------------------------------------------------
 async def reconcile_control_state() -> bool:
-    """
-    Returns True if this startup was caused by a
-    controlled restart/update.
-    """
     row = get_pending()
     if not row:
         return False
@@ -70,6 +73,7 @@ async def reconcile_control_state() -> bool:
 # Main runtime
 # -------------------------------------------------
 async def main():
+    apikeys.init()
     version, codename = get_version()
 
     try:
@@ -92,7 +96,70 @@ async def main():
 
     log.info(f"Atlas runtime initialized — v{version} ({codename})")
 
+    # -------------------------------------------------
+    # AFK HANDLERS (REGISTERED ONCE, CORRECTLY)
+    # -------------------------------------------------
+    # if clients.user:
+
+        # Incoming messages → AFK reply
+        # @clients.user.on(NewMessage(incoming=True))
+        # async def afk_incoming_handler(event):
+        #     if not AFK["enabled"]:
+        #         return
+        #
+        #     # ignore channels & service messages
+        #     if event.is_channel or event.sender_id is None:
+        #         return
+        #
+        #     since = AFK["since"]
+        #     duration = human_time(time.time() - since) if since else "unknown"
+        #
+        #     text = (
+        #         "😴 **I'm currently AFK**\n"
+        #         f"⏱ **Away for:** {duration}"
+        #     )
+        #
+        #     if AFK["reason"]:
+        #         text += f"\n💬 **Reason:** {AFK['reason']}"
+        #
+        #     try:
+        #         await event.reply(text)
+        #     except Exception:
+        #         pass
+        #
+        # # Outgoing messages → auto-disable AFK
+        # @clients.user.on(NewMessage(outgoing=True))
+        # async def afk_outgoing_handler(event):
+        #     if not AFK["enabled"]:
+        #         return
+        #
+        #     text = (event.raw_text or "").strip()
+        #
+        #     # Ignore the .afk command itself
+        #     if text.startswith(".afk"):
+        #         return
+        #
+        #     # Ignore messages sent to log group
+        #     try:
+        #         from log.manager import get_log_chat_id
+        #         log_chat_id = get_log_chat_id()
+        #         if log_chat_id and event.chat_id == log_chat_id:
+        #             return
+        #     except Exception:
+        #         pass
+        #
+        #     # ✅ REAL USER ACTIVITY → disable AFK (SILENTLY)
+        #     clear_afk()
+        #
+        #     await log_event(
+        #         event="AFK",
+        #         details="I’m back online",
+        #     )
+
+
+    # -------------------------------------------------
     # Reconcile restart/update AFTER everything is ready
+    # -------------------------------------------------
     was_controlled = await reconcile_control_state()
 
     # Only log "Bot started" on cold starts
