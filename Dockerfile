@@ -13,10 +13,13 @@ RUN apt update && apt install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy project
+# Mark repo path as safe for git (required for bind mounts)
+RUN git config --global --add safe.directory /atlas
+
+# Copy project (will be overridden by bind mount at runtime)
 COPY . /atlas
 
-# Install Python deps
+# Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Start Atlas
