@@ -56,9 +56,9 @@ def get_remote_commit():
 
 
 def get_changelog():
-    return run_git(
-        ["git", "log", "--oneline", "HEAD..origin/HEAD"]
-    )
+    raw = run_git(["git", "log", "--oneline", "HEAD..origin/HEAD"])
+    lines = raw.splitlines()
+    return "\n".join(f"`{line}`" for line in lines)
 
 
 # -------------------------------------------------
@@ -121,20 +121,17 @@ async def handler(event, args):
                 )
 
             if local == remote:
-                return await respond(
-                    event,
-                    "Atlas is already up to date."
-                )
+                return await respond(event, "Atlas is already up to date.")
 
             changelog = get_changelog()
             if not changelog:
-                changelog = "No changelog available."
+                changelog = "`No changelog available.`"
 
             return await respond(
                 event,
                 "Update Available\n\n"
                 "Changelog:\n"
-                f"```\n{changelog}\n```\n"
+                f"{changelog}\n\n"
                 "Run `.update now` to apply the update."
             )
 
