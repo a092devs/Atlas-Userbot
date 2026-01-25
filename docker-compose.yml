@@ -7,5 +7,7 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      - DOCKER=1
     volumes:
-      - ./data:/atlas/data
+      - .:/atlas

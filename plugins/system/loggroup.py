@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from log.manager import (
     init as init_log_manager,
     get_log_chat_id,
@@ -17,8 +19,12 @@ __plugin__ = {
         "dellog": "Remove the configured log group",
         "logstatus": "Show the currently configured log group",
         "testlog": "Send a test log message to the log group",
+        "clearlog": "Clear stored log file",
     },
 }
+
+
+LOG_FILE_PATH = Path("log.txt")
 
 
 # 🔑 called automatically by loader
@@ -36,6 +42,9 @@ async def handler(event, args):
 
     cmd = event.raw_text.split()[0].lstrip("./").lower()
 
+    # -------------------------------------------------
+    # setlog
+    # -------------------------------------------------
     if cmd == "setlog":
         chat_id = event.chat_id
         set_log_chat_id(chat_id)
@@ -45,10 +54,16 @@ async def handler(event, args):
             f"**Chat ID:** `{chat_id}`",
         )
 
+    # -------------------------------------------------
+    # dellog
+    # -------------------------------------------------
     if cmd == "dellog":
         remove_log_chat_id()
         return await respond(event, "🗑 **Log group removed**")
 
+    # -------------------------------------------------
+    # logstatus
+    # -------------------------------------------------
     if cmd == "logstatus":
         cid = get_log_chat_id()
         if not cid:
@@ -59,6 +74,9 @@ async def handler(event, args):
             f"`{cid}`",
         )
 
+    # -------------------------------------------------
+    # testlog
+    # -------------------------------------------------
     if cmd == "testlog":
         cid = get_log_chat_id()
         if not cid:
@@ -74,5 +92,22 @@ async def handler(event, args):
             return await respond(
                 event,
                 "❌ Failed to send test log message:\n"
+                f"`{e}`",
+            )
+
+    # -------------------------------------------------
+    # clearlog
+    # -------------------------------------------------
+    if cmd == "clearlog":
+        try:
+            LOG_FILE_PATH.write_text("", encoding="utf-8")
+            return await respond(
+                event,
+                "🧹 **Log file cleared successfully**",
+            )
+        except Exception as e:
+            return await respond(
+                event,
+                "❌ Failed to clear log file:\n"
                 f"`{e}`",
             )

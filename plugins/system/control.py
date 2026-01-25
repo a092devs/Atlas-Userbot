@@ -21,7 +21,6 @@ __plugin__ = {
 }
 
 
-REPO_URL = "https://github.com/a092devs/Atlas-Userbot"
 GIT_DIR = Path(".git")
 
 
@@ -30,6 +29,10 @@ GIT_DIR = Path(".git")
 # -------------------------------------------------
 def is_owner(event):
     return event.sender_id == config.OWNER_ID
+
+
+def running_in_docker():
+    return os.getenv("DOCKER") == "1"
 
 
 def run_git(cmd: list[str]) -> str:
@@ -53,10 +56,16 @@ def get_remote_commit():
     return run_git(["git", "rev-parse", "origin/HEAD"])
 
 
-def get_changelog():
-    return run_git(
+def get_changelog_lines():
+    """
+    Returns list of commit lines between local and remote
+    """
+    output = run_git(
         ["git", "log", "--oneline", "HEAD..origin/HEAD"]
     )
+    if not output:
+        return []
+    return output.splitlines()
 
 
 # -------------------------------------------------
@@ -103,7 +112,7 @@ async def handler(event, args):
     # UPDATE
     # -------------------------------------------------
     if cmd == "update":
-        # Step 1: check updates
+        # ---------------- check updates ----------------
         if sub != "now":
             await respond(event, "🔍 **Checking for updates…**")
 
@@ -119,19 +128,23 @@ async def handler(event, args):
                     "✅ **Atlas is already up to date**",
                 )
 
-            changelog = get_changelog()
+            changelog = get_changelog_lines()
             if not changelog:
-                changelog = "_No changelog available_"
+                changelog_text = "_No changelog available_"
+            else:
+                changelog_text = "\n".join(
+                    f"• {line}" for line in changelog
+                )
 
             return await respond(
                 event,
                 "⬆️ **Update Available!**\n\n"
                 "📝 **Changelog:**\n"
-                f"```\n{changelog}\n```\n"
+                f"{changelog_text}\n\n"
                 "Run `.update now` to apply the update.",
             )
 
-        # Step 2: apply update
+        # ---------------- apply update ----------------
         await respond(event, "⬇️ **Updating Atlas…**")
 
         set_action(
@@ -141,6 +154,14 @@ async def handler(event, args):
         )
 
         await log_event("Update Initiated", "Update requested")
+
+        # Docker Option B safety check
+        if running_in_docker() and not GIT_DIR.exists():
+            return await respond(
+                event,
+                "⚠️ Docker detected but repository is not mounted.\n"
+                "Bind-mount the repo to enable updates.",
+            )
 
         try:
             run_git(["git", "pull", "--ff-only"])

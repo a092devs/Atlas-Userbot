@@ -1,4 +1,3 @@
-import sys
 from pathlib import Path
 from datetime import datetime
 
@@ -88,7 +87,7 @@ async def handler(event, args):
 
     # ---------------- install ----------------
     if action == "install":
-        reply = event.reply_to_message
+        reply = await event.get_reply_message()
         if not reply or not reply.file or not reply.file.name.endswith(".py"):
             return await respond(
                 event,
@@ -130,7 +129,6 @@ async def handler(event, args):
 
         target_file.write_text(source, encoding="utf-8")
 
-        # Reload all modules safely
         loader.plugins.clear()
         loader.load()
 
@@ -153,7 +151,10 @@ async def handler(event, args):
         return await respond(event, "🔄 **Modules reloaded successfully**")
 
     # ---------------- upload ----------------
-    if action == "upload" and len(args) > 1:
+    if action == "upload":
+        if len(args) < 2:
+            return await respond(event, "❌ Usage: `.modules upload <module>`")
+
         name = args[1].lower()
         path = module_map.get(name)
         if not path:
@@ -179,11 +180,13 @@ async def handler(event, args):
         )
         return
 
-    # ---------------- info / check ----------------
-    name = args[1].lower() if len(args) > 1 else None
-    path = module_map.get(name) if name else None
-
+    # ---------------- info ----------------
     if action == "info":
+        if len(args) < 2:
+            return await respond(event, "❌ Usage: `.modules info <module>`")
+
+        name = args[1].lower()
+        path = module_map.get(name)
         if not path:
             return await respond(event, f"❌ Module `{name}` not found.")
 
@@ -194,7 +197,7 @@ async def handler(event, args):
 
         text = (
             "📦 **Module Info**\n\n"
-            f"**Name:** `{name}`\n"
+            f"**File:** `{path.name}`\n"
             f"**Category:** `{plugin['category'] if plugin else 'unknown'}`\n"
             f"**Path:** `{path}`\n"
             f"**Size:** `{size_kb} KB`\n"
@@ -208,7 +211,13 @@ async def handler(event, args):
 
         return await respond(event, text.strip())
 
+    # ---------------- check ----------------
     if action == "check":
+        if len(args) < 2:
+            return await respond(event, "❌ Usage: `.modules check <module>`")
+
+        name = args[1].lower()
+        path = module_map.get(name)
         if not path:
             return await respond(event, f"❌ Module `{name}` not found.")
 
@@ -223,4 +232,4 @@ async def handler(event, args):
         )
 
     # ---------------- fallback ----------------
-    await respond(event, "❌ Unknown subcommand. Use `.modules`.")
+    await respond(event, "❌ Unknown subcommand. Use `.modules`.")	
