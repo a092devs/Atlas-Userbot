@@ -1,4 +1,5 @@
 from pathlib import Path
+from datetime import datetime
 from telethon import TelegramClient
 
 from log.manager import get_log_chat_id
@@ -29,13 +30,15 @@ def setup(bot: TelegramClient):
 # Telegram log (events / alerts)
 # -------------------------------------------------
 async def log_event(event: str, details: str = ""):
-    text = f"[{event}]"
+    # ---------------- File log (WITH timestamp) ----------------
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    file_text = f"[{timestamp}] [{event}]"
     if details:
-        text += f" {details}"
+        file_text += f" {details}"
 
-    # Write ONLY Atlas-level events to file
-    _write_to_file(text)
+    _write_to_file(file_text)
 
+    # ---------------- Telegram log (NO timestamp) ----------------
     if not _bot:
         return
 
