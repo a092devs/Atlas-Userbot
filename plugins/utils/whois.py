@@ -161,14 +161,12 @@ async def handler(event, args):
         my_dc_id = get_client_dc_id(event.client)
 
         text = (
-            "```\n"
-            f"Chat ID: {chat_id}\n"
-            f"Chat DC ID: {chat_dc_id}\n\n"
-            f"Message ID: {message_id}\n"
-            f"Your ID: {my_id}\n"
-            f"Your DC ID: {my_dc_id}\n"
-            "```"
-        )
+    		f"Chat ID: `{chat_id}`\n"
+    		f"Chat DC ID: `{chat_dc_id}`\n\n"
+    		f"Message ID: `{message_id}`\n"
+    		f"Your ID: `{my_id}`\n"
+    		f"Your DC ID: `{my_dc_id}`"
+		)
 
         return await respond(event, text)
 
