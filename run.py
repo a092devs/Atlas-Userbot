@@ -10,6 +10,9 @@ from utils.logger import log
 from log.logger import setup as setup_logging
 from log.logger import log_event
 
+from plugins.utils.forwarder import start_worker, handle_incoming
+from telethon.events import NewMessage
+
 from db.control import (
     get_pending,
     mark_done,
@@ -94,67 +97,16 @@ async def main():
     dispatcher.bind(clients.user, clients.bot)
     loader.load()
 
+    if clients.user:
+        start_worker(clients.user)
+
+        @clients.user.on(NewMessage(incoming=True))
+        async def forwarder_incoming_handler(event):
+            await handle_incoming(event)
+
+
+
     log.info(f"Atlas runtime initialized — v{version} ({codename})")
-
-    # -------------------------------------------------
-    # AFK HANDLERS (REGISTERED ONCE, CORRECTLY)
-    # -------------------------------------------------
-    # if clients.user:
-
-        # Incoming messages → AFK reply
-        # @clients.user.on(NewMessage(incoming=True))
-        # async def afk_incoming_handler(event):
-        #     if not AFK["enabled"]:
-        #         return
-        #
-        #     # ignore channels & service messages
-        #     if event.is_channel or event.sender_id is None:
-        #         return
-        #
-        #     since = AFK["since"]
-        #     duration = human_time(time.time() - since) if since else "unknown"
-        #
-        #     text = (
-        #         "😴 **I'm currently AFK**\n"
-        #         f"⏱ **Away for:** {duration}"
-        #     )
-        #
-        #     if AFK["reason"]:
-        #         text += f"\n💬 **Reason:** {AFK['reason']}"
-        #
-        #     try:
-        #         await event.reply(text)
-        #     except Exception:
-        #         pass
-        #
-        # # Outgoing messages → auto-disable AFK
-        # @clients.user.on(NewMessage(outgoing=True))
-        # async def afk_outgoing_handler(event):
-        #     if not AFK["enabled"]:
-        #         return
-        #
-        #     text = (event.raw_text or "").strip()
-        #
-        #     # Ignore the .afk command itself
-        #     if text.startswith(".afk"):
-        #         return
-        #
-        #     # Ignore messages sent to log group
-        #     try:
-        #         from log.manager import get_log_chat_id
-        #         log_chat_id = get_log_chat_id()
-        #         if log_chat_id and event.chat_id == log_chat_id:
-        #             return
-        #     except Exception:
-        #         pass
-        #
-        #     # ✅ REAL USER ACTIVITY → disable AFK (SILENTLY)
-        #     clear_afk()
-        #
-        #     await log_event(
-        #         event="AFK",
-        #         details="I’m back online",
-        #     )
 
 
     # -------------------------------------------------
@@ -177,7 +129,6 @@ async def main():
             if c
         ]
     )
-
 
 # -------------------------------------------------
 # Graceful shutdown

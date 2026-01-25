@@ -47,16 +47,51 @@ def build_module_help(name: str):
 
     text += "⚡ **Commands**\n"
 
-    # commands is ALWAYS a dict[str, str]
-    for cmd, desc in sorted(plugin["commands"].items()):
-        if desc:
-            text += f"  • `.{cmd}` — {desc}\n"
+    commands = plugin.get("commands", {})
+
+    # -------------------------------------------------
+    # Group commands by base command
+    # -------------------------------------------------
+    grouped = {}
+    for cmd, desc in commands.items():
+        parts = cmd.split()
+        base = parts[0]
+        sub = parts[1:] if len(parts) > 1 else []
+
+        grouped.setdefault(base, []).append((sub, desc))
+
+    # -------------------------------------------------
+    # Render grouped commands
+    # -------------------------------------------------
+    for base in sorted(grouped):
+        entries = grouped[base]
+
+        # Base command description (if exists)
+        base_desc = None
+        for sub, desc in entries:
+            if not sub:
+                base_desc = desc
+                break
+
+        if base_desc:
+            text += f"  • `.{base}` — {base_desc}\n"
         else:
-            text += f"  • `.{cmd}`\n"
+            text += f"  • `.{base}`\n"
+
+        # Subcommands
+        for sub, desc in sorted(entries):
+            if not sub:
+                continue
+            sub_name = " ".join(sub)
+            if desc:
+                text += f"      ◦ `{sub_name}` — {desc}\n"
+            else:
+                text += f"      ◦ `{sub_name}`\n"
 
     text += "\nℹ️ Use `.help <command>` to see command-specific help"
 
     return text.strip()
+
 
 
 # -------------------------------------------------

@@ -1,8 +1,9 @@
 from utils.respond import respond
 from config import config
-from db.apikeys import set_key, delete_key, list_keys
 from log.logger import log_event
 from utils.human import format_user
+
+from db import apikeys as apikeys_db
 
 
 __plugin__ = {
@@ -15,6 +16,11 @@ __plugin__ = {
         "listapi": "List configured API keys",
     },
 }
+
+
+# 🔑 AUTO-CALLED BY LOADER
+def init():
+    apikeys_db.init()
 
 
 def is_owner(event):
@@ -40,7 +46,7 @@ async def handler(event, args):
         name = args[0].upper()
         value = " ".join(args[1:])
 
-        set_key(name, value)
+        apikeys_db.set_key(name, value)
 
         await log_event(
             event="API key set",
@@ -58,7 +64,7 @@ async def handler(event, args):
             return await respond(event, "❌ Usage: `.delapi <KEY_NAME>`")
 
         name = args[0].upper()
-        delete_key(name)
+        apikeys_db.delete_key(name)
 
         await log_event(
             event="API key deleted",
@@ -69,7 +75,7 @@ async def handler(event, args):
 
     # ---------------- listapi ----------------
     elif cmd == "listapi":
-        keys = list_keys()
+        keys = apikeys_db.list_keys()
         if not keys:
             return await respond(event, "ℹ️ No API keys configured.")
 

@@ -68,7 +68,7 @@ class Loader:
                 except ModuleNotFoundError as e:
                     missing = e.name
 
-                    # If dependency is already installed, this is a real error
+                    # If dependency is already installed, real error
                     if self._is_installed(missing):
                         log.error(
                             f"Dependency '{missing}' already installed but import failed "
@@ -82,13 +82,12 @@ class Loader:
                         f"Missing dependency '{missing}' for {module_name}, installing..."
                     )
 
-                    installed = self._install_package(missing)
-                    if not installed:
+                    if not self._install_package(missing):
                         self._log_plugin_failure(module_name, e)
                         module = None
                         break
 
-                    # Log successful install
+                    # Log successful dependency install
                     try:
                         loop = asyncio.get_running_loop()
                         loop.create_task(
@@ -100,7 +99,7 @@ class Loader:
                     except RuntimeError:
                         pass
 
-                    # Continue loop and retry import
+                    # retry import after install
 
                 except Exception as e:
                     log.error(f"Failed to load plugin: {module_name}")
@@ -111,6 +110,20 @@ class Loader:
 
             if not module:
                 continue
+
+            # ---------------------------------------------
+            # Auto-init plugin (DB / setup hook)
+            # ---------------------------------------------
+            init_fn = getattr(module, "init", None)
+            if callable(init_fn):
+                try:
+                    init_fn()
+                    log.info(f"Initialized plugin: {module_name}")
+                except Exception as e:
+                    log.error(f"Init failed for plugin: {module_name}")
+                    log.error(str(e))
+                    self._log_plugin_failure(module_name, e)
+                    continue
 
             # ---------------------------------------------
             # Register plugin
@@ -138,6 +151,7 @@ class Loader:
                 else:
                     continue
 
+                # Store metadata for help system
                 self.plugins[name.lower()] = {
                     "name": name,
                     "category": category,
@@ -145,6 +159,7 @@ class Loader:
                     "commands": commands,
                 }
 
+                # Register commands
                 for cmd in commands.keys():
                     dispatcher.register(cmd, handler)
 

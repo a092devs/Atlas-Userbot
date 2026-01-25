@@ -1,7 +1,12 @@
 from db.core import db
 
-
 LOG_KEY = "log_chat_id"
+
+
+def init():
+    # kv_store table is expected to exist
+    # This function exists to satisfy loader lifecycle
+    pass
 
 
 def get_log_chat_id() -> int | None:
@@ -31,3 +36,4 @@ def remove_log_chat_id():
         "DELETE FROM kv_store WHERE key=?",
         (LOG_KEY,),
     )
+

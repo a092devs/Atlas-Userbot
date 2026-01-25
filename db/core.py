@@ -38,5 +38,18 @@ class Database:
             (key, str(value)),
         )
 
+    def delete(self, key):
+        self.execute(
+            "DELETE FROM kv_store WHERE key = ?",
+            (key,),
+        )
+
+    def keys(self, prefix):
+        rows = self.execute(
+            "SELECT key FROM kv_store WHERE key LIKE ?",
+            (f"{prefix}%",),
+        ).fetchall()
+        return [r["key"] for r in rows]
+
 
 db = Database()
