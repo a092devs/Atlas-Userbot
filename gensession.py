@@ -47,9 +47,9 @@ async def main():
             content = env.read_text() if env.exists() else ""
             lines = [
                 l for l in content.splitlines()
-                if not l.startswith("USER_SESSION=")
+                if not l.startswith("STRING_SESSION=")
             ]
-            lines.append(f"USER_SESSION={session}")
+            lines.append(f"STRING_SESSION={session}")
             env.write_text("\n".join(lines) + "\n")
             print("Saved to .env")
 
