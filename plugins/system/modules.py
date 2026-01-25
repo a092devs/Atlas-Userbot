@@ -29,6 +29,10 @@ PLUGIN_ROOT = Path(config.PLUGIN_PATH)
 # -------------------------------------------------
 # Helpers
 # -------------------------------------------------
+def is_owner(event):
+    return event.sender_id == config.OWNER_ID
+
+
 def scan_modules():
     found = {}
     for path in PLUGIN_ROOT.rglob("*.py"):
@@ -46,16 +50,31 @@ def validate_source(source: str, name: str):
         return False, e
 
 
-def extract_plugin_meta(source: str):
-    scope = {}
-    exec(source, scope)
-    return scope.get("__plugin__")
+def extract_plugin_meta_safe(source: str):
+    """
+    Extract __plugin__ dict without executing module code.
+    """
+    namespace = {}
+    try:
+        compiled = compile(source, "<module>", "exec")
+        exec(compiled, {"__builtins__": {}}, namespace)
+    except Exception:
+        return None
+    return namespace.get("__plugin__")
+
+
+def reload_modules():
+    loader.plugins.clear()
+    loader.load()
 
 
 # -------------------------------------------------
 # Handler
 # -------------------------------------------------
 async def handler(event, args):
+    if not is_owner(event):
+        return
+
     module_map = scan_modules()
 
     # ---------------- .modules ----------------
@@ -85,6 +104,12 @@ async def handler(event, args):
 
     action = args[0].lower()
 
+    # ---------------- reload ----------------
+    if action == "reload":
+        reload_modules()
+        await log_event("Modules Reloaded")
+        return await respond(event, "🔄 **Modules reloaded successfully**")
+
     # ---------------- install ----------------
     if action == "install":
         reply = await event.get_reply_message()
@@ -94,8 +119,7 @@ async def handler(event, args):
                 "❌ Reply to a `.py` module file to install it.",
             )
 
-        source = await reply.download_media(bytes)
-        source = source.decode(errors="ignore")
+        source = (await reply.download_media(bytes)).decode(errors="ignore")
 
         ok, error = validate_source(source, reply.file.name)
         if not ok:
@@ -105,7 +129,7 @@ async def handler(event, args):
                 f"`{type(error).__name__}: {error}`",
             )
 
-        meta = extract_plugin_meta(source)
+        meta = extract_plugin_meta_safe(source)
         if not meta:
             return await respond(event, "❌ `__plugin__` metadata not found.")
 
@@ -123,19 +147,14 @@ async def handler(event, args):
         if target_file.exists():
             return await respond(
                 event,
-                f"❌ Module `{name}` already exists.\n"
-                "Remove it first or rename the module.",
+                f"❌ Module `{name}` already exists.",
             )
 
         target_file.write_text(source, encoding="utf-8")
 
-        loader.plugins.clear()
-        loader.load()
+        reload_modules()
 
-        await log_event(
-            event="Module Installed",
-            details=f"{name} ({category})",
-        )
+        await log_event("Module Installed", f"{name} ({category})")
 
         return await respond(
             event,
@@ -144,17 +163,8 @@ async def handler(event, args):
             f"**Category:** `{category}`",
         )
 
-    # ---------------- reload ----------------
-    if action == "reload":
-        loader.plugins.clear()
-        loader.load()
-        return await respond(event, "🔄 **Modules reloaded successfully**")
-
     # ---------------- upload ----------------
-    if action == "upload":
-        if len(args) < 2:
-            return await respond(event, "❌ Usage: `.modules upload <module>`")
-
+    if action == "upload" and len(args) > 1:
         name = args[1].lower()
         path = module_map.get(name)
         if not path:
@@ -180,47 +190,39 @@ async def handler(event, args):
         )
         return
 
-    # ---------------- info ----------------
-    if action == "info":
+    # ---------------- info / check ----------------
+    if action in {"info", "check"}:
         if len(args) < 2:
-            return await respond(event, "❌ Usage: `.modules info <module>`")
+            return await respond(event, f"❌ Usage: `.modules {action} <module>`")
 
         name = args[1].lower()
         path = module_map.get(name)
         if not path:
             return await respond(event, f"❌ Module `{name}` not found.")
 
-        size_kb = round(path.stat().st_size / 1024, 2)
-        modified = datetime.fromtimestamp(path.stat().st_mtime)
+        if action == "info":
+            size_kb = round(path.stat().st_size / 1024, 2)
+            modified = datetime.fromtimestamp(path.stat().st_mtime)
 
-        plugin = loader.plugins.get(name)
+            plugin = loader.plugins.get(name)
 
-        text = (
-            "📦 **Module Info**\n\n"
-            f"**File:** `{path.name}`\n"
-            f"**Category:** `{plugin['category'] if plugin else 'unknown'}`\n"
-            f"**Path:** `{path}`\n"
-            f"**Size:** `{size_kb} KB`\n"
-            f"**Modified:** `{modified}`\n"
-        )
+            text = (
+                "📦 **Module Info**\n\n"
+                f"**Name:** `{name}`\n"
+                f"**Category:** `{plugin['category'] if plugin else 'unknown'}`\n"
+                f"**Path:** `{path}`\n"
+                f"**Size:** `{size_kb} KB`\n"
+                f"**Modified:** `{modified}`\n"
+            )
 
-        if plugin:
-            text += "\n**Commands:**\n"
-            for cmd, desc in plugin["commands"].items():
-                text += f"• `.{cmd}` — {desc or 'No description'}\n"
+            if plugin:
+                text += "\n**Commands:**\n"
+                for cmd, desc in plugin["commands"].items():
+                    text += f"• `.{cmd}` — {desc or 'No description'}\n"
 
-        return await respond(event, text.strip())
+            return await respond(event, text.strip())
 
-    # ---------------- check ----------------
-    if action == "check":
-        if len(args) < 2:
-            return await respond(event, "❌ Usage: `.modules check <module>`")
-
-        name = args[1].lower()
-        path = module_map.get(name)
-        if not path:
-            return await respond(event, f"❌ Module `{name}` not found.")
-
+        # action == check
         ok, error = validate_source(path.read_text(), path.name)
         if ok:
             return await respond(event, f"✅ **Module `{name}` is valid**")
@@ -232,4 +234,4 @@ async def handler(event, args):
         )
 
     # ---------------- fallback ----------------
-    await respond(event, "❌ Unknown subcommand. Use `.modules`.")	
+    await respond(event, "❌ Unknown subcommand. Use `.modules`.")

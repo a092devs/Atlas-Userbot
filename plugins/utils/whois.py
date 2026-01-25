@@ -8,10 +8,10 @@ from utils.respond import respond
 __plugin__ = {
     "name": "WhoIs",
     "category": "utils",
-    "description": "Inspect detailed user or chat information",
+    "description": "Inspect IDs and detailed user/chat information",
     "commands": {
-        "id": "Show only ID of user or chat",
-        "whois": "Show detailed profile information",
+        "id": "Show contextual IDs (chat, message, user)",
+        "whois": "Show detailed profile or chat information",
     },
 }
 
@@ -19,96 +19,118 @@ __plugin__ = {
 # -------------------------------------------------
 # Helpers
 # -------------------------------------------------
-def _format_status(user: User) -> str:
-    status = user.status
-    if not status:
+def get_peer_id(entity) -> str:
+    """
+    Users: positive ID
+    Groups / Channels: -100<ID>
+    """
+    if isinstance(entity, User):
+        return str(entity.id)
+    return f"-100{entity.id}"
+
+
+def get_client_dc_id(client):
+    try:
+        return client.session.dc_id
+    except Exception:
+        return None
+
+
+def format_status(user: User) -> str:
+    if not user.status:
         return "Unknown"
-
-    name = type(status).__name__
-    return name.replace("UserStatus", "")
+    return type(user.status).__name__.replace("UserStatus", "")
 
 
-def _format_user_flags(user: User) -> str:
+def format_flags(user: User) -> str:
     flags = []
-
     if user.bot:
-        flags.append("🤖 Bot")
+        flags.append("bot")
     if user.verified:
-        flags.append("✅ Verified")
+        flags.append("verified")
     if user.scam:
-        flags.append("⚠️ Scam")
+        flags.append("scam")
     if user.fake:
-        flags.append("❗ Fake")
+        flags.append("fake")
     if user.restricted:
-        flags.append("🚫 Restricted")
+        flags.append("restricted")
     if user.deleted:
-        flags.append("🗑 Deleted")
-
-    return " | ".join(flags) if flags else "None"
+        flags.append("deleted")
+    return ", ".join(flags) if flags else "none"
 
 
 # -------------------------------------------------
 # Formatters
 # -------------------------------------------------
-def format_id_only(entity):
-    return f"🆔 **ID**\n\n`{entity.id}`"
-
-
-def format_user_full(user: User, full):
-    text = "👤 **User Profile**\n\n"
-    text += f"• **User ID:** `{user.id}`\n"
+def format_user_whois(user: User, full):
+    lines = [
+        "User Information",
+        "",
+        f"ID: {user.id}",
+    ]
 
     if user.first_name or user.last_name:
-        text += f"• **Name:** {(user.first_name or '')} {(user.last_name or '')}\n"
+        name = f"{user.first_name or ''} {user.last_name or ''}".strip()
+        lines.append(f"Name: {name}")
 
     if user.username:
-        text += f"• **Username:** @{user.username}\n"
+        lines.append(f"Username: @{user.username}")
 
     if full.about:
-        text += f"\n📝 **Bio:**\n{full.about}\n"
+        lines.extend(["", "Bio:", full.about])
 
-    if user.phone:
-        text += f"\n📞 **Phone:** `{user.phone}`\n"
-
-    text += f"\n👁 **Status:** `{_format_status(user)}`\n"
-    text += f"🚩 **Flags:** {_format_user_flags(user)}\n"
+    lines.extend(
+        [
+            "",
+            f"Status: {format_status(user)}",
+            f"Flags: {format_flags(user)}",
+        ]
+    )
 
     if full.common_chats_count:
-        text += f"🤝 **Mutual Chats:** `{full.common_chats_count}`\n"
+        lines.append(f"Mutual Chats: {full.common_chats_count}")
 
-    return text
+    if user.phone:
+        lines.append(f"Phone: {user.phone}")
+
+    return "\n".join(lines)
 
 
-def format_chat_full(chat, full):
-    text = "💬 **Chat Information**\n\n"
-    text += f"• **Chat ID:** `{chat.id}`\n"
-
-    if getattr(chat, "title", None):
-        text += f"• **Title:** {chat.title}\n"
-
-    if getattr(chat, "username", None):
-        text += f"• **Username:** @{chat.username}\n"
+def format_chat_whois(chat, full):
+    peer_id = get_peer_id(chat)
 
     if isinstance(chat, Channel):
-        ctype = "Channel" if not chat.megagroup else "Supergroup"
+        ctype = "supergroup" if chat.megagroup else "channel"
     else:
-        ctype = "Group"
+        ctype = "group"
 
-    text += f"• **Type:** {ctype}\n"
+    lines = [
+        "Chat Information",
+        "",
+        f"ID: {peer_id}",
+    ]
 
-    if chat.verified:
-        text += "• **Verified:** Yes\n"
+    if getattr(chat, "title", None):
+        lines.append(f"Title: {chat.title}")
 
-    if chat.scam:
-        text += "• **Scam:** Yes\n"
+    if getattr(chat, "username", None):
+        lines.append(f"Username: @{chat.username}")
 
-    if full.about:
-        text += f"\n📝 **Description:**\n{full.about}\n"
+    lines.append(f"Type: {ctype}")
 
     if full.participants_count:
-        text += f"\n👥 **Members:** `{full.participants_count}`\n"
+        lines.append(f"Members: {full.participants_count}")
 
-    return text
+    if full.about:
+        lines.extend(["", "Description:", full.about])
+
+    if chat.verified:
+        lines.append("Verified: yes")
+
+    if chat.scam:
+        lines.append("Scam: yes")
+
+    return "\n".join(lines)
 
 
 # -------------------------------------------------
@@ -118,52 +140,72 @@ async def handler(event, args):
     cmd = event.raw_text.split()[0].lstrip("./").lower()
 
     # Resolve entity
-    entity = None
     reply = await event.get_reply_message()
-
     if reply and reply.sender:
         entity = reply.sender
     elif args:
         try:
             entity = await event.client.get_entity(args[0])
         except Exception:
-            return await respond(event, "❌ Could not resolve entity.")
+            return await respond(event, "Could not resolve entity.")
     else:
         entity = await event.get_chat()
 
-    # ---------------- .id ----------------
+    # -------------------------------------------------
+    # id  → contextual inspector
+    # -------------------------------------------------
     if cmd == "id":
-        return await respond(event, format_id_only(entity))
+        chat = await event.get_chat()
+        me = await event.client.get_me()
 
-    # ---------------- .whois ----------------
+        chat_id = get_peer_id(chat)
+        chat_dc_id = None  # Telegram does not expose chat DC reliably
+
+        message_id = event.id
+        my_id = me.id
+        my_dc_id = get_client_dc_id(event.client)
+
+        text = (
+            f"Chat ID: {chat_id}\n"
+            f"Chat DC ID: {chat_dc_id}\n\n"
+            f"Message ID: {message_id}\n"
+            f"Your ID: {my_id}\n"
+            f"Your DC ID: {my_dc_id}"
+        )
+
+        return await respond(event, text)
+
+    # -------------------------------------------------
+    # whois  → detailed inspection
+    # -------------------------------------------------
     if isinstance(entity, User):
         full = await event.client(GetFullUserRequest(entity))
-        text = format_user_full(entity, full.full_user)
+        text = format_user_whois(entity, full.full_user)
 
-        try:
-            if entity.photo:
+        if entity.photo:
+            try:
                 return await event.client.send_file(
                     event.chat_id,
                     entity.photo,
                     caption=text,
                 )
-        except Exception:
-            pass
+            except Exception:
+                pass
 
         return await respond(event, text)
 
     # Chat / Channel
     full = await event.client(GetFullChannelRequest(entity))
-    text = format_chat_full(entity, full.full_chat)
+    text = format_chat_whois(entity, full.full_chat)
 
-    try:
-        if getattr(entity, "photo", None):
+    if getattr(entity, "photo", None):
+        try:
             return await event.client.send_file(
                 event.chat_id,
                 entity.photo,
                 caption=text,
             )
-    except Exception:
-        pass
+        except Exception:
+            pass
 
     return await respond(event, text)
