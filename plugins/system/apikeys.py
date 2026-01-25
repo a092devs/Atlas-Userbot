@@ -1,7 +1,6 @@
 from utils.respond import respond
 from config import config
 from log.logger import log_event
-from utils.human import format_user
 
 from db import apikeys as apikeys_db
 
@@ -31,7 +30,6 @@ async def handler(event, args):
     if not is_owner(event):
         return
 
-    user = await format_user(event)
     cmd = event.raw_text.split()[0].lstrip("./").lower()
 
     # ---------------- setapi ----------------
@@ -50,7 +48,7 @@ async def handler(event, args):
 
         await log_event(
             event="API key set",
-            details=f"Key: {name}\nBy: {user}",
+            details=f"Key: {name}",
         )
 
         await respond(
@@ -68,7 +66,7 @@ async def handler(event, args):
 
         await log_event(
             event="API key deleted",
-            details=f"Key: {name}\nBy: {user}",
+            details=f"Key: {name}",
         )
 
         await respond(event, f"🗑 API key `{name}` deleted.")

@@ -8,7 +8,6 @@ from config import config
 from utils.respond import respond
 from log.logger import log_event
 from db.control import set_action
-from utils.human import format_user
 
 
 __plugin__ = {
@@ -64,8 +63,6 @@ def get_changelog():
 # Handler
 # -------------------------------------------------
 async def handler(event, args):
-    user = await format_user(event)
-
     if not is_owner(event):
         return await respond(event, "❌ You are not allowed to use this command.")
 
@@ -97,7 +94,7 @@ async def handler(event, args):
             message_id=message_id,
         )
 
-        await log_event("Restart Initiated", f"By {user}")
+        await log_event("Restart Initiated", "Restart requested")
         await asyncio.sleep(1)
 
         os.execv(sys.executable, [sys.executable] + sys.argv)
@@ -143,7 +140,7 @@ async def handler(event, args):
             message_id=message_id,
         )
 
-        await log_event("Update Initiated", f"By {user}")
+        await log_event("Update Initiated", "Update requested")
 
         try:
             run_git(["git", "pull", "--ff-only"])

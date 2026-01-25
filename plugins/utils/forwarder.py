@@ -1,13 +1,17 @@
 import json
 import time
-
 import asyncio
+
 from telethon.errors import FloodWaitError
 
 from db.core import db
 from utils.respond import respond
 from log.logger import log_event
 
+
+# -------------------------------------------------
+# Runtime state
+# -------------------------------------------------
 _forward_queue: asyncio.Queue | None = None
 _worker_task: asyncio.Task | None = None
 
@@ -21,7 +25,7 @@ __plugin__ = {
     "description": "Automatically forward messages between chats",
     "commands": {
         "fw": "Base command for message forwarder",
-        "fw add": "Add a new forwarding rule",
+        "fw add": "Add a new forwarding rule (ID or @username)",
         "fw del": "Delete a forwarding rule",
         "fw list": "List all forwarding rules",
         "fw on": "Enable a forwarding rule",
@@ -63,6 +67,9 @@ def _new_rule_id():
     return str(int(time.time() * 1000))
 
 
+# -------------------------------------------------
+# Worker lifecycle
+# -------------------------------------------------
 def start_worker(client):
     global _forward_queue, _worker_task
 
@@ -73,18 +80,24 @@ def start_worker(client):
     _worker_task = asyncio.create_task(_forward_worker(client))
 
 
+# -------------------------------------------------
+# Rule helpers
+# -------------------------------------------------
 def get_active_rules_for_chat(chat_id: int):
-    """
-    Return list of enabled rules where src == chat_id
-    """
     rules = []
     for rid in _rules_index():
         rule = _load_rule(rid)
-        if not rule:
-            continue
-        if rule.get("enabled") and rule.get("src") == chat_id:
+        if rule and rule.get("enabled") and rule.get("src") == chat_id:
             rules.append(rule)
     return rules
+
+
+# -------------------------------------------------
+# Album handling
+# -------------------------------------------------
+async def _delayed_album_flush(grouped_id, client, dst, delay):
+    await asyncio.sleep(1.2)
+    await _flush_album(grouped_id, client, dst, delay)
 
 
 async def _flush_album(grouped_id, client, dst, delay):
@@ -118,11 +131,10 @@ async def _flush_album(grouped_id, client, dst, delay):
         pass
 
 
+# -------------------------------------------------
+# Incoming message hook (called from run.py)
+# -------------------------------------------------
 async def handle_incoming(event):
-    """
-    Called from run.py listener.
-    Decides whether to forward and enqueues safely.
-    """
     message = event.message
     chat_id = event.chat_id
 
@@ -134,37 +146,33 @@ async def handle_incoming(event):
         dst = rule["dst"]
         delay = rule.get("delay", 2)
 
-        # ---------------- Album handling ----------------
+        # Album
         if message.grouped_id:
             gid = message.grouped_id
             _album_buffer.setdefault(gid, []).append(message)
 
-            # schedule flush once
             if gid not in _album_tasks:
                 _album_tasks[gid] = asyncio.create_task(
                     _delayed_album_flush(gid, event.client, dst, delay)
                 )
             return
 
-        # ---------------- Normal message ----------------
         await enqueue(message, dst, delay)
 
 
-async def _delayed_album_flush(grouped_id, client, dst, delay):
-    await asyncio.sleep(1.2)  # wait for full album
-    await _flush_album(grouped_id, client, dst, delay)
-
-
+# -------------------------------------------------
+# Forward worker (SINGLE definition)
+# -------------------------------------------------
 async def _forward_worker(client):
     while True:
         message, dst, delay = await _forward_queue.get()
 
         try:
-            # ---------- Text ----------
+            # Text
             if not message.media:
                 await client.send_message(dst, message.text or "")
 
-            # ---------- Media ----------
+            # Media
             else:
                 try:
                     await client.send_file(
@@ -173,14 +181,9 @@ async def _forward_worker(client):
                         caption=message.text,
                     )
                 except Exception:
-                    # fallback: download & reupload
                     file = await message.download_media()
                     if file:
-                        await client.send_file(
-                            dst,
-                            file,
-                            caption=message.text,
-                        )
+                        await client.send_file(dst, file, caption=message.text)
 
             await asyncio.sleep(delay)
 
@@ -192,7 +195,29 @@ async def _forward_worker(client):
 
 
 # -------------------------------------------------
-# Main handler
+# Queue API
+# -------------------------------------------------
+async def enqueue(message, dst: int, delay: int = 2):
+    if not _forward_queue:
+        return
+    await _forward_queue.put((message, dst, delay))
+
+
+# -------------------------------------------------
+# Utilities
+# -------------------------------------------------
+async def _resolve_chat(event, value: str) -> int | None:
+    try:
+        if value.startswith("@"):
+            entity = await event.client.get_entity(value)
+            return entity.id
+        return int(value)
+    except Exception:
+        return None
+
+
+# -------------------------------------------------
+# Command handler
 # -------------------------------------------------
 async def handler(event, args):
     if not args:
@@ -200,7 +225,7 @@ async def handler(event, args):
             event,
             "🔁 **Forwarder**\n\n"
             "**Commands:**\n"
-            "• `fw add <src_chat_id> <dst_chat_id>`\n"
+            "• `fw add <src_id|@src> <dst_id|@dst>`\n"
             "• `fw del <rule_id>`\n"
             "• `fw on <rule_id>`\n"
             "• `fw off <rule_id>`\n"
@@ -209,21 +234,20 @@ async def handler(event, args):
 
     cmd = args[0].lower()
 
-    # -------------------------------------------------
-    # fw add <src> <dst>
-    # -------------------------------------------------
+    # ---------------- fw add ----------------
     if cmd == "add":
         if len(args) < 3:
+            return await respond(event, "❌ Usage: `fw add <src> <dst>`")
+
+        src = await _resolve_chat(event, args[1])
+        dst = await _resolve_chat(event, args[2])
+
+        if not src or not dst:
             return await respond(
                 event,
-                "❌ **Usage:** `fw add <source_chat_id> <destination_chat_id>`",
+                "❌ Could not resolve source or destination chat.\n"
+                "Make sure the username is valid and you have access.",
             )
-
-        try:
-            src = int(args[1])
-            dst = int(args[2])
-        except ValueError:
-            return await respond(event, "❌ Chat IDs must be integers.")
 
         rule_id = _new_rule_id()
         rule = {
@@ -239,22 +263,25 @@ async def handler(event, args):
         _save_rule(rule_id, rule)
 
         await log_event(
-            event="FW_ADD",
-            details=f"Rule {rule_id}: {src} → {dst}",
+            event="Forwarder",
+            details=(
+                "Rule added\n"
+                f"ID: {rule_id}\n"
+                f"From: {src}\n"
+                f"To: {dst}"
+            ),
         )
 
         return await respond(
             event,
             "✅ **Forwarding rule added**\n\n"
-            f"• **Rule ID:** `{rule_id}`\n"
-            f"• **From:** `{src}`\n"
-            f"• **To:** `{dst}`\n"
-            "• **Status:** Enabled",
+            f"🆔 **ID:** `{rule_id}`\n"
+            f"📥 **From:** `{src}`\n"
+            f"📤 **To:** `{dst}`\n"
+            "⚙️ **Status:** Enabled",
         )
 
-    # -------------------------------------------------
-    # fw del <rule_id>
-    # -------------------------------------------------
+    # ---------------- fw del ----------------
     if cmd == "del":
         if len(args) < 2:
             return await respond(event, "❌ Usage: `fw del <rule_id>`")
@@ -269,19 +296,13 @@ async def handler(event, args):
         _save_rules_index(rules)
         _delete_rule(rule_id)
 
-        await log_event(
-            event="FW_DEL",
-            details=f"Rule {rule_id} deleted",
-        )
-
+        await log_event("Forwarder", f"Rule deleted\nID: {rule_id}")
         return await respond(event, f"🗑 **Rule `{rule_id}` deleted.**")
 
-    # -------------------------------------------------
-    # fw on <rule_id>
-    # -------------------------------------------------
-    if cmd == "on":
+    # ---------------- fw on / off ----------------
+    if cmd in ("on", "off"):
         if len(args) < 2:
-            return await respond(event, "❌ Usage: `fw on <rule_id>`")
+            return await respond(event, f"❌ Usage: `fw {cmd} <rule_id>`")
 
         rule_id = args[1]
         rule = _load_rule(rule_id)
@@ -289,94 +310,34 @@ async def handler(event, args):
         if not rule:
             return await respond(event, "❌ Rule not found.")
 
-        rule["enabled"] = True
+        rule["enabled"] = cmd == "on"
         _save_rule(rule_id, rule)
 
-        return await respond(event, f"▶️ **Rule `{rule_id}` enabled.**")
+        state = "enabled" if cmd == "on" else "disabled"
+        return await respond(event, f"⚙️ **Rule `{rule_id}` {state}.**")
 
-    # -------------------------------------------------
-    # fw off <rule_id>
-    # -------------------------------------------------
-    if cmd == "off":
-        if len(args) < 2:
-            return await respond(event, "❌ Usage: `fw off <rule_id>`")
-
-        rule_id = args[1]
-        rule = _load_rule(rule_id)
-
-        if not rule:
-            return await respond(event, "❌ Rule not found.")
-
-        rule["enabled"] = False
-        _save_rule(rule_id, rule)
-
-        return await respond(event, f"⏸ **Rule `{rule_id}` disabled.**")
-
-    # -------------------------------------------------
-    # fw list
-    # -------------------------------------------------
+    # ---------------- fw list ----------------
     if cmd == "list":
         rules = _rules_index()
         if not rules:
             return await respond(event, "📭 No forwarding rules configured.")
 
         text = "🔁 **Forwarding Rules**\n\n"
+
         for rid in rules:
             rule = _load_rule(rid)
             if not rule:
                 continue
 
-            status = "✅ ON" if rule["enabled"] else "⏸ OFF"
+            status = "🟢 ENABLED" if rule["enabled"] else "🔴 DISABLED"
+
             text += (
-                f"• **ID:** `{rid}`\n"
-                f"  `{rule['src']}` → `{rule['dst']}`\n"
-                f"  **Status:** {status}\n\n"
+                f"🆔 **ID:** `{rid}`\n"
+                f"📥 **From:** `{rule['src']}`\n"
+                f"📤 **To:** `{rule['dst']}`\n"
+                f"⚙️ **Status:** {status}\n\n"
             )
 
         return await respond(event, text.strip())
 
-    # -------------------------------------------------
-    # Unknown subcommand
-    # -------------------------------------------------
-    return await respond(
-        event,
-        "❌ Unknown subcommand.\n"
-        "Use `fw` to see available options.",
-    )
-
-
-async def enqueue(message, dst: int, delay: int = 2):
-    global _forward_queue
-    if not _forward_queue:
-        return
-    await _forward_queue.put((message, dst, delay))
-
-
-async def _forward_worker(client):
-    while True:
-        message, dst, delay = await _forward_queue.get()
-
-        try:
-            # ---------------- Text only ----------------
-            if not message.media:
-                await client.send_message(
-                    dst,
-                    message.text or "",
-                )
-
-            # ---------------- Media ----------------
-            else:
-                await client.send_file(
-                    dst,
-                    message.media,
-                    caption=message.text,
-                )
-
-            await asyncio.sleep(delay)
-
-        except FloodWaitError as e:
-            await asyncio.sleep(e.seconds + 1)
-
-        except Exception as e:
-            # swallow errors for now (we’ll improve logging later)
-            pass
+    return await respond(event, "❌ Unknown subcommand. Use `fw`.")
