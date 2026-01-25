@@ -1,0 +1,71 @@
+# -------------------------------
+# Python
+# -------------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.eggs/
+
+# Virtual environments
+venv/
+.env/
+.env.*
+.venv/
+
+# -------------------------------
+# Runtime / logs
+# -------------------------------
+*.log
+logs/
+log.txt
+rlog.txt
+
+# -------------------------------
+# Telethon sessions
+# -------------------------------
+*.session
+*.session-journal
+
+# -------------------------------
+# Database / runtime state
+# -------------------------------
+*.db
+db/*.db
+db/*.sqlite
+db/*.sqlite3
+
+# Control / restart state (runtime-only)
+db/control.json
+
+# -------------------------------
+# OS / Editor junk
+# -------------------------------
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# -------------------------------
+# Git / build artifacts
+# -------------------------------
+dist/
+build/
+.cache/
+
+# -------------------------------
+# Secrets / config
+# -------------------------------
+config.env
+.env
+.env.local
+.env.production
+
+# -------------------------------
+# Docker (optional)
+# -------------------------------
+docker-compose.override.yml
