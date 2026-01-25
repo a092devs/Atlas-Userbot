@@ -11,6 +11,8 @@ RUN apt update && apt install -y \
     git \
     ca-certificates \
     curl \
+    nodejs \
+    npm \
     && rm -rf /var/lib/apt/lists/*
 
 # Mark repo path as safe for git (required for bind mounts)
