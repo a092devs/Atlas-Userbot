@@ -1,29 +1,44 @@
 import logging
+from pathlib import Path
+from logging.handlers import RotatingFileHandler
 
-try:
-    from config import config
-    LOG_LEVEL = config.LOG_LEVEL
-except Exception:
-    LOG_LEVEL = "INFO"
+LOG_FILE_PATH = Path("log.txt")
 
+# -------------------------------------------------
+# Logger setup
+# -------------------------------------------------
+log = logging.getLogger("atlas")
+log.setLevel(logging.DEBUG)
 
-def _setup_logger():
-    logger = logging.getLogger("Atlas")
-    logger.setLevel(LOG_LEVEL)
+_formatter = logging.Formatter(
+    fmt="[%(asctime)s] [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 
-    if logger.handlers:
-        return logger
+# -------------------------------------------------
+# File handler (rotating)
+# -------------------------------------------------
+_file_handler = RotatingFileHandler(
+    LOG_FILE_PATH,
+    maxBytes=50 * 1024 * 1024,  # 5 MB
+    backupCount=3,
+    encoding="utf-8",
+)
+_file_handler.setFormatter(_formatter)
+_file_handler.setLevel(logging.DEBUG)
 
-    handler = logging.StreamHandler()
-    formatter = logging.Formatter(
-        "[%(asctime)s] [%(levelname)s] %(name)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-    handler.setFormatter(formatter)
+# -------------------------------------------------
+# Console handler (optional, useful for dev)
+# -------------------------------------------------
+_console_handler = logging.StreamHandler()
+_console_handler.setFormatter(_formatter)
+_console_handler.setLevel(logging.INFO)
 
-    logger.addHandler(handler)
-    logger.propagate = False
-    return logger
+# -------------------------------------------------
+# Attach handlers (avoid duplicates)
+# -------------------------------------------------
+if not log.handlers:
+    log.addHandler(_file_handler)
+    log.addHandler(_console_handler)
 
-
-log = _setup_logger()
+log.propagate = False

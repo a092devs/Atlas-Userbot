@@ -47,10 +47,9 @@ class Dispatcher:
         text = (event.raw_text or "").strip()
 
         # -------------------------------------------------
-        # AFK AUTO-DISABLE (THIS IS THE KEY FIX)
+        # AFK AUTO-DISABLE
         # -------------------------------------------------
         if AFK.get("enabled"):
-            # Ignore the AFK command itself
             if not text.startswith(".afk"):
                 clear_afk()
                 await log_event(
@@ -96,12 +95,14 @@ class Dispatcher:
         try:
             await handler(event, args)
 
-        except Exception as e:
-            log.error(f"Unhandled exception in '{command}': {e}")
+        except Exception:
+            # 🔴 CRITICAL FIX: log full traceback
+            log.exception(f"Unhandled exception in command '{command}'")
 
+            # User-facing logging (short & safe)
             await log_event(
                 event="Command Error",
-                details=f"{event.raw_text}\n{type(e).__name__}: {e}",
+                details=event.raw_text or command,
             )
 
 

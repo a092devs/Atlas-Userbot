@@ -36,8 +36,8 @@ class Loader:
                 stderr=subprocess.DEVNULL,
             )
             return True
-        except Exception as e:
-            log.error(f"Failed to install dependency '{package}': {e}")
+        except Exception:
+            log.exception(f"Failed to install dependency '{package}'")
             return False
 
     # -------------------------------------------------
@@ -63,14 +63,13 @@ class Loader:
             while True:
                 try:
                     module = importlib.import_module(module_name)
-                    break  # ✅ Import successful
+                    break
 
                 except ModuleNotFoundError as e:
                     missing = e.name
 
-                    # If dependency is already installed, real error
                     if self._is_installed(missing):
-                        log.error(
+                        log.exception(
                             f"Dependency '{missing}' already installed but import failed "
                             f"for {module_name}"
                         )
@@ -87,7 +86,6 @@ class Loader:
                         module = None
                         break
 
-                    # Log successful dependency install
                     try:
                         loop = asyncio.get_running_loop()
                         loop.create_task(
@@ -99,11 +97,8 @@ class Loader:
                     except RuntimeError:
                         pass
 
-                    # retry import after install
-
                 except Exception as e:
-                    log.error(f"Failed to load plugin: {module_name}")
-                    log.error(str(e))
+                    log.exception(f"Failed to load plugin: {module_name}")
                     self._log_plugin_failure(module_name, e)
                     module = None
                     break
@@ -120,8 +115,7 @@ class Loader:
                     init_fn()
                     log.info(f"Initialized plugin: {module_name}")
                 except Exception as e:
-                    log.error(f"Init failed for plugin: {module_name}")
-                    log.error(str(e))
+                    log.exception(f"Init failed for plugin: {module_name}")
                     self._log_plugin_failure(module_name, e)
                     continue
 
@@ -166,8 +160,7 @@ class Loader:
                 log.info(f"Loaded plugin: {name}")
 
             except Exception as e:
-                log.error(f"Failed to register plugin: {module_name}")
-                log.error(str(e))
+                log.exception(f"Failed to register plugin: {module_name}")
                 self._log_plugin_failure(module_name, e)
 
     # -------------------------------------------------
