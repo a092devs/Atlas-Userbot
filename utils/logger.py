@@ -1,76 +1,45 @@
 import logging
 from pathlib import Path
-from logging.handlers import RotatingFileHandler
 
 LOG_FILE_PATH = Path("log.txt")
 
 # -------------------------------------------------
 # Logger setup
 # -------------------------------------------------
-log = logging.getLogger("atlas")
-log.setLevel(logging.DEBUG)
+_logger = logging.getLogger("atlas")
+_logger.setLevel(logging.INFO)
 
 _formatter = logging.Formatter(
-    fmt="[%(asctime)s] [%(levelname)s] %(name)s: %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
+    "[%(asctime)s] [%(levelname)s] %(message)s",
+    "%Y-%m-%d %H:%M:%S",
 )
 
-# -------------------------------------------------
-# File handler (rotating)
-# -------------------------------------------------
-_file_handler = RotatingFileHandler(
-    LOG_FILE_PATH,
-    maxBytes=50 * 1024 * 1024,  # 5 MB
-    backupCount=3,
-    encoding="utf-8",
-)
-_file_handler.setFormatter(_formatter)
-_file_handler.setLevel(logging.DEBUG)
+# Console handler
+_console = logging.StreamHandler()
+_console.setFormatter(_formatter)
+
+# File handler (THIS is what was missing)
+_file = logging.FileHandler(LOG_FILE_PATH, encoding="utf-8")
+_file.setFormatter(_formatter)
+
+_logger.addHandler(_console)
+_logger.addHandler(_file)
+
 
 # -------------------------------------------------
-# Console handler (optional, useful for dev)
+# Public helpers
 # -------------------------------------------------
-_console_handler = logging.StreamHandler()
-_console_handler.setFormatter(_formatter)
-_console_handler.setLevel(logging.INFO)
-
-# -------------------------------------------------
-# Attach handlers (avoid duplicates)
-# -------------------------------------------------
-if not log.handlers:
-    log.addHandler(_file_handler)
-    log.addHandler(_console_handler)
-
-log.propagate = False
-
 def clear_logs():
-    try:
-        if LOG_FILE_PATH.exists():
-            LOG_FILE_PATH.unlink()
-    except Exception:
-        pass
-        
+    LOG_FILE_PATH.write_text("", encoding="utf-8")
 
-def set_log_level(level: str) -> bool:
-    """
-    Change Atlas log level at runtime.
-    Returns True if successful, False otherwise.
-    """
-    level = level.upper()
 
-    if not hasattr(logging, level):
-        return False
-
-    new_level = getattr(logging, level)
-
-    log.setLevel(new_level)
-
-    for handler in log.handlers:
-        handler.setLevel(new_level)
-
-    log.info(f"Log level changed to {level}")
-    return True
+def set_log_level(level: str):
+    _logger.setLevel(getattr(logging, level))
 
 
 def get_log_level() -> str:
-    return logging.getLevelName(log.level)        
+    return logging.getLevelName(_logger.level)
+
+
+# Expose logger
+log = _logger
