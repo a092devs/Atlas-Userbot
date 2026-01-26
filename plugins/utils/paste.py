@@ -22,12 +22,10 @@ async def get_text(event, args):
     reply = await event.get_reply_message()
 
     if reply:
-        # text or caption
         text = reply.text or reply.message
         if text:
             return text
 
-        # document
         if reply.document:
             path = await reply.download_media()
             try:
@@ -46,7 +44,7 @@ async def get_text(event, args):
 
 
 # =====================================================
-# Paste services
+# Paste services (Moon logic, Telethon-safe)
 # =====================================================
 
 async def paste_haste(text):
@@ -75,15 +73,16 @@ async def paste_pasty(text, ext="txt"):
         async with session.post(
             "https://pasty.lus.pm/api/v1/pastes",
             json={"content": text},
-            headers={
-                "User-Agent": "Mozilla/5.0",
-                "content-type": "application/json",
-            },
+            headers={"User-Agent": "Mozilla/5.0"},
         ) as r:
-            if r.status != 200:
+            raw = await r.text()
+
+            # pasty sometimes returns plain text
+            try:
+                data = await r.json()
+            except Exception:
                 return None
 
-            data = await r.json()
             pid = data.get("id")
             if not pid:
                 return None
@@ -96,11 +95,14 @@ async def paste_pasty(text, ext="txt"):
 
 
 async def paste_spacebin(text, ext="txt"):
+    form = aiohttp.FormData()
+    form.add_field("content", text)
+    form.add_field("extension", ext)
+
     async with aiohttp.ClientSession() as session:
         async with session.post(
             "https://spaceb.in/api/",
-            data={"content": text},
-            params={"extension": ext},
+            data=form,
         ) as r:
             if r.status != 200:
                 return None
@@ -119,7 +121,7 @@ async def paste_spacebin(text, ext="txt"):
 
 
 # =====================================================
-# Handler (Atlas / Telethon)
+# Handler (Atlas style – EDIT messages)
 # =====================================================
 
 async def handler(event, args):
@@ -134,28 +136,25 @@ async def handler(event, args):
     text = await get_text(event, args)
 
     if not text:
-        await event.reply("❌ No text found to paste.")
+        await event.edit("❌ **No text found to paste.**")
         return
 
-    await event.reply("⏳ Pasting...")
+    await event.edit("⏳ **Pasting...**")
 
     if cmd == "haste":
         result = await paste_haste(text)
-
     elif cmd == "pasty":
         result = await paste_pasty(text, ext)
-
     elif cmd == "spacebin":
         result = await paste_spacebin(text, ext)
-
     else:
         result = None
 
     if not result:
-        await event.reply("❌ Paste failed.")
+        await event.edit("❌ **Paste failed.**")
         return
 
-    await event.reply(
+    await event.edit(
         f"**Pasted to {result['bin']}**\n"
         f"🔗 {result['url']}\n"
         f"📄 {result['raw']}",
