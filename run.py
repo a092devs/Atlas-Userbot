@@ -2,6 +2,8 @@ import asyncio
 import signal
 import time
 
+from telethon.events import NewMessage
+
 from clients import clients
 from dispatcher import dispatcher
 from loader import loader
@@ -11,7 +13,6 @@ from log.logger import setup as setup_logging
 from log.logger import log_event
 
 from plugins.utils.forwarder import start_worker, handle_incoming
-from telethon.events import NewMessage
 
 from db.control import (
     get_pending,
@@ -22,10 +23,11 @@ from db.control import (
 from core.version import get_version
 from db import apikeys
 
-from telethon.events import NewMessage
 from utils.formatting import human_time
 
+# AFK imports
 from plugins.system.afk import AFK, clear_afk
+
 
 # -------------------------------------------------
 # Global start time (used by alive / uptime)
@@ -74,7 +76,9 @@ async def reconcile_control_state() -> bool:
 # Main runtime
 # -------------------------------------------------
 async def main():
-	clear_logs()
+    # 🔴 Clear logs on fresh start / update
+    clear_logs()
+
     apikeys.init()
     version, codename = get_version()
 
@@ -85,7 +89,7 @@ async def main():
         print("\nRun `python gensession.py` first.\n")
         return
 
-    # Setup logging (NO infra logic here)
+    # Setup Telegram logging
     if clients.bot:
         setup_logging(clients.bot)
 
@@ -103,10 +107,7 @@ async def main():
         async def forwarder_incoming_handler(event):
             await handle_incoming(event)
 
-
-
     log.info(f"Atlas runtime initialized — v{version} ({codename})")
-
 
     # -------------------------------------------------
     # Reconcile restart/update AFTER everything is ready
@@ -128,6 +129,7 @@ async def main():
             if c
         ]
     )
+
 
 # -------------------------------------------------
 # Graceful shutdown
