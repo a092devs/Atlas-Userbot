@@ -78,12 +78,10 @@ async def handler(event, args):
     # .loglevel
     # -------------------------------------------------
     if text.startswith((".loglevel", "/loglevel")):
-        # show current level
         if not args:
-            level = get_log_level()
             await respond(
                 event,
-                f"📊 **Current log level:** `{level}`\n\n{LOG_LEVEL_HELP}",
+                f"📊 **Current log level:** `{get_log_level()}`\n\n{LOG_LEVEL_HELP}",
             )
             return
 
@@ -97,10 +95,7 @@ async def handler(event, args):
 
         set_log_level(level_name)
 
-        await respond(
-            event,
-            f"✅ **Log level set to `{level_name}`**",
-        )
+        await respond(event, f"✅ **Log level set to `{level_name}`**")
 
         await log_event(
             event="Log Level Changed",
@@ -112,7 +107,10 @@ async def handler(event, args):
     # .log <n>
     # -------------------------------------------------
     if args and args[0].isdigit():
-        if not LOG_FILE_PATH.exists():
+        if (
+            not LOG_FILE_PATH.exists()
+            or LOG_FILE_PATH.stat().st_size == 0
+        ):
             return await respond(event, "ℹ️ Log file is empty.")
 
         lines = int(args[0])
@@ -129,18 +127,16 @@ async def handler(event, args):
             file=bio,
             caption=f"📄 **Last {lines} lines of Atlas log**",
         )
-
-        await log_event(
-            event="Log Uploaded",
-            details=f"Last {lines} lines uploaded",
-        )
         return
 
     # -------------------------------------------------
     # .log (full)
     # -------------------------------------------------
     if text in (".log", "/log"):
-        if not LOG_FILE_PATH.exists():
+        if (
+            not LOG_FILE_PATH.exists()
+            or LOG_FILE_PATH.stat().st_size == 0
+        ):
             return await respond(event, "ℹ️ Log file is empty.")
 
         await event.client.send_file(
@@ -149,14 +145,9 @@ async def handler(event, args):
             filename="atlas-log.txt",
             caption="📄 **Atlas Log File**",
         )
-
-        await log_event(
-            event="Log Uploaded",
-            details="Full log uploaded",
-        )
         return
 
     # -------------------------------------------------
-    # invalid usage
+    # fallback help
     # -------------------------------------------------
     await respond(event, LOG_LEVEL_HELP)
