@@ -14,28 +14,31 @@ __plugin__ = {
 
 
 # =====================================================
-# Text extraction (reply / args / document)
+# Text extraction (document > text > args)
 # =====================================================
 
 async def extract_text(event, args):
     reply = await event.get_reply_message()
 
-    # 1️⃣ reply text or caption
     if reply:
-        if reply.raw_text:
-            return reply.raw_text
-
-        # 2️⃣ document
+        # 1️⃣ DOCUMENT FIRST (any text-based file)
         if reply.document:
             path = await reply.download_media()
             try:
+                # try reading as text (any extension)
                 with open(path, "r", encoding="utf-8", errors="ignore") as f:
-                    return f.read()
+                    content = f.read()
+                    if content.strip():
+                        return content
             finally:
                 if path and os.path.exists(path):
                     os.remove(path)
 
-    # 3️⃣ args
+        # 2️⃣ TEXT / CAPTION
+        if reply.raw_text:
+            return reply.raw_text
+
+    # 3️⃣ ARGS
     if args:
         return " ".join(args)
 
@@ -43,7 +46,7 @@ async def extract_text(event, args):
 
 
 # =====================================================
-# Pasty service (working baseline)
+# Pasty backend
 # =====================================================
 
 async def paste_pasty(text):
@@ -74,7 +77,7 @@ async def paste_pasty(text):
 
 
 # =====================================================
-# Handler (Atlas style: edit message)
+# Handler (Atlas style)
 # =====================================================
 
 async def handler(event, args):
