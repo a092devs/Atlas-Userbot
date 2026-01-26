@@ -1,90 +1,5 @@
 import aiohttp
-from dataclasses import dataclass
-from typing import Optional
 
-
-# =====================================================
-# Models & Errors
-# =====================================================
-
-@dataclass
-class PasteResult:
-    url: str
-    raw_url: Optional[str] = None
-    provider: str = "unknown"
-
-
-class PasteError(Exception):
-    pass
-
-
-class PasteFailed(PasteError):
-    pass
-
-
-# =====================================================
-# Paste Providers
-# =====================================================
-
-async def paste_nekobin(text: str) -> PasteResult:
-    async with aiohttp.ClientSession() as session:
-        async with session.post(
-            "https://nekobin.com/api/documents",
-            json={"content": text},
-        ) as resp:
-            if resp.status != 200:
-                raise PasteFailed("Nekobin upload failed")
-
-            data = await resp.json()
-            key = data["result"]["key"]
-
-    return PasteResult(
-        url=f"https://nekobin.com/{key}",
-        raw_url=f"https://nekobin.com/raw/{key}",
-        provider="nekobin",
-    )
-
-
-async def paste_hastebin(text: str) -> PasteResult:
-    async with aiohttp.ClientSession() as session:
-        async with session.post(
-            "https://hastebin.com/documents",
-            data=text.encode(),
-        ) as resp:
-            if resp.status != 200:
-                raise PasteFailed("Hastebin upload failed")
-
-            data = await resp.json()
-            key = data["key"]
-
-    return PasteResult(
-        url=f"https://hastebin.com/{key}",
-        raw_url=f"https://hastebin.com/raw/{key}",
-        provider="hastebin",
-    )
-
-
-# =====================================================
-# Shared Paste Logic
-# =====================================================
-
-async def run_paste(text: str, providers) -> PasteResult:
-    if not text.strip():
-        raise PasteFailed("Empty text")
-
-    last_error = None
-    for name, func in providers:
-        try:
-            return await func(text)
-        except PasteError as e:
-            last_error = e
-
-    raise PasteFailed("All paste providers failed") from last_error
-
-
-# =====================================================
-# Atlas Plugin Metadata
-# =====================================================
 
 __plugin__ = {
     "name": "Paste",
@@ -99,11 +14,58 @@ __plugin__ = {
 
 
 # =====================================================
-# Plugin Handler
+# Paste providers (simple functions)
+# =====================================================
+
+async def nekobin(text):
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            "https://nekobin.com/api/documents",
+            json={"content": text},
+        ) as r:
+            if r.status != 200:
+                return None
+
+            data = await r.json()
+            key = data.get("result", {}).get("key")
+            if not key:
+                return None
+
+    return {
+        "provider": "nekobin",
+        "url": f"https://nekobin.com/{key}",
+        "raw": f"https://nekobin.com/raw/{key}",
+    }
+
+
+async def hastebin(text):
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            "https://hastebin.com/documents",
+            data=text.encode(),
+        ) as r:
+            if r.status != 200:
+                return None
+
+            data = await r.json()
+            key = data.get("key")
+            if not key:
+                return None
+
+    return {
+        "provider": "hastebin",
+        "url": f"https://hastebin.com/{key}",
+        "raw": f"https://hastebin.com/raw/{key}",
+    }
+
+
+# =====================================================
+# Atlas plugin handler
 # =====================================================
 
 async def handler(event, args):
-    cmd = event.pattern_match.group(1)
+    # command without prefix (., !)
+    cmd = event.text.split()[0][1:].lower()
 
     # get text from args or reply
     text = " ".join(args).strip()
@@ -116,28 +78,25 @@ async def handler(event, args):
         await event.reply("❌ Provide text or reply to a message.")
         return
 
-    try:
-        if cmd == "neko":
-            result = await run_paste(text, [("nekobin", paste_nekobin)])
+    result = None
 
-        elif cmd == "haste":
-            result = await run_paste(text, [("hastebin", paste_hastebin)])
+    if cmd == "neko":
+        result = await nekobin(text)
 
-        else:  # .paste → fallback
-            result = await run_paste(
-                text,
-                [
-                    ("nekobin", paste_nekobin),
-                    ("hastebin", paste_hastebin),
-                ],
-            )
+    elif cmd == "haste":
+        result = await hastebin(text)
 
-    except PasteError as e:
-        await event.reply(f"❌ Paste failed: `{e}`")
+    else:  # .paste → auto fallback
+        for func in (nekobin, hastebin):
+            result = await func(text)
+            if result:
+                break
+
+    if not result:
+        await event.reply("❌ Paste failed.")
         return
 
-    msg = f"🔗 **Paste ({result.provider})**\n{result.url}"
-    if result.raw_url:
-        msg += f"\n📄 {result.raw_url}"
+    msg = f"🔗 **Paste ({result['provider']})**\n{result['url']}"
+    msg += f"\n📄 {result['raw']}"
 
     await event.reply(msg)
