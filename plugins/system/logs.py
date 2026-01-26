@@ -1,23 +1,28 @@
 from pathlib import Path
 from io import BytesIO
+import logging
 
 from utils.respond import respond
 from config import config
-from log.logger import log_event, LOG_FILE_PATH
-from utils.logger import clear_logs, set_log_level, get_log_level
+from log.logger import log_event
+from utils.logger import LOG_FILE_PATH, clear_logs, set_log_level, get_log_level
+
 
 __plugin__ = {
     "name": "Logs",
     "category": "system",
-    "description": "View, clear or control Atlas logs",
+    "description": "View, clear, or control Atlas logging",
     "commands": {
         "log": "Upload Atlas logs or last N lines",
         "clearlog": "Clear Atlas log file",
-        "loglevel": "Get or set Atlas log level",
+        "loglevel": "Get or set Atlas log verbosity",
     },
 }
 
 
+# -------------------------------------------------
+# Helpers
+# -------------------------------------------------
 def is_owner(event):
     return event.sender_id == config.OWNER_ID
 
@@ -27,46 +32,33 @@ def tail_lines(path: Path, lines: int) -> str:
         return "".join(f.readlines()[-lines:])
 
 
+LOG_LEVEL_HELP = (
+    "🧾 **Log Level Control**\n\n"
+    "Control how much information Atlas logs.\n\n"
+    "**Available levels:**\n"
+    "• **ERROR** – Only errors and crashes\n"
+    "• **WARNING** – Errors and important warnings\n"
+    "• **INFO** – Normal operation *(default)*\n"
+    "• **DEBUG** – Very verbose, for debugging\n"
+    "• **CRITICAL** – Fatal errors only\n\n"
+    "**Usage:**\n"
+    "• `.loglevel` → show current log level\n"
+    "• `.loglevel <level>` → set log level\n\n"
+    "**Examples:**\n"
+    "• `.loglevel info`\n"
+    "• `.loglevel debug`\n"
+    "• `.loglevel error`"
+)
+
+
+# -------------------------------------------------
+# Command handler
+# -------------------------------------------------
 async def handler(event, args):
     if not is_owner(event):
         return
 
     text = (event.raw_text or "").strip()
-    
-    # -------------------------------------------------
-    # .loglevel
-    # -------------------------------------------------
-    if text.startswith(".loglevel") or text.startswith("/loglevel"):
-        # .loglevel → show current
-        if not args:
-            current = get_log_level()
-            return await respond(
-                event,
-                f"📊 **Current log level:** `{current}`\n\n"
-                "**Available levels:**\n"
-                "`debug`, `info`, `warning`, `error`, `critical`",
-            )
-
-        level = args[0].lower()
-
-        if not set_log_level(level):
-            return await respond(
-                event,
-                "❌ **Invalid log level.**\n\n"
-                "Valid levels:\n"
-                "`debug`, `info`, `warning`, `error`, `critical`",
-            )
-
-        await respond(
-            event,
-            f"✅ **Log level set to `{level.upper()}`**",
-        )
-
-        await log_event(
-            event="Log Level Changed",
-            details=f"New level: {level.upper()}",
-        )
-        return
 
     # -------------------------------------------------
     # .clearlog
@@ -79,6 +71,40 @@ async def handler(event, args):
         await log_event(
             event="Logs Cleared",
             details="Log file was manually cleared",
+        )
+        return
+
+    # -------------------------------------------------
+    # .loglevel
+    # -------------------------------------------------
+    if text.startswith((".loglevel", "/loglevel")):
+        # show current level
+        if not args:
+            level = get_log_level()
+            await respond(
+                event,
+                f"📊 **Current log level:** `{level}`\n\n{LOG_LEVEL_HELP}",
+            )
+            return
+
+        level_name = args[0].upper()
+        if not hasattr(logging, level_name):
+            await respond(
+                event,
+                "❌ **Invalid log level.**\n\n" + LOG_LEVEL_HELP,
+            )
+            return
+
+        set_log_level(level_name)
+
+        await respond(
+            event,
+            f"✅ **Log level set to `{level_name}`**",
+        )
+
+        await log_event(
+            event="Log Level Changed",
+            details=f"New level: {level_name}",
         )
         return
 
@@ -113,7 +139,7 @@ async def handler(event, args):
     # -------------------------------------------------
     # .log (full)
     # -------------------------------------------------
-    if not args:
+    if text in (".log", "/log"):
         if not LOG_FILE_PATH.exists():
             return await respond(event, "ℹ️ Log file is empty.")
 
@@ -133,14 +159,4 @@ async def handler(event, args):
     # -------------------------------------------------
     # invalid usage
     # -------------------------------------------------
-    await respond(
-        event,
-        "❌ **Usage:**\n"
-        "`.log` – upload full log file\n"
-        "`.log <lines>` – upload last N lines\n"
-        "`.clearlog` – clear log file\n\n"
-        "**Examples:**\n"
-        "`.log`\n"
-        "`.log 20`\n"
-        "`.clearlog`",
-    )
+    await respond(event, LOG_LEVEL_HELP)
