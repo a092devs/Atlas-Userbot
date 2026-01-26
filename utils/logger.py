@@ -42,3 +42,35 @@ if not log.handlers:
     log.addHandler(_console_handler)
 
 log.propagate = False
+
+def clear_logs():
+    try:
+        if LOG_FILE_PATH.exists():
+            LOG_FILE_PATH.unlink()
+    except Exception:
+        pass
+        
+
+def set_log_level(level: str) -> bool:
+    """
+    Change Atlas log level at runtime.
+    Returns True if successful, False otherwise.
+    """
+    level = level.upper()
+
+    if not hasattr(logging, level):
+        return False
+
+    new_level = getattr(logging, level)
+
+    log.setLevel(new_level)
+
+    for handler in log.handlers:
+        handler.setLevel(new_level)
+
+    log.info(f"Log level changed to {level}")
+    return True
+
+
+def get_log_level() -> str:
+    return logging.getLevelName(log.level)        

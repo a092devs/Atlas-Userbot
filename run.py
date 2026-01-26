@@ -6,7 +6,7 @@ from clients import clients
 from dispatcher import dispatcher
 from loader import loader
 
-from utils.logger import log
+from utils.logger import log, clear_logs
 from log.logger import setup as setup_logging
 from log.logger import log_event
 
@@ -25,9 +25,7 @@ from db import apikeys
 from telethon.events import NewMessage
 from utils.formatting import human_time
 
-# AFK imports
 from plugins.system.afk import AFK, clear_afk
-
 
 # -------------------------------------------------
 # Global start time (used by alive / uptime)
@@ -76,6 +74,7 @@ async def reconcile_control_state() -> bool:
 # Main runtime
 # -------------------------------------------------
 async def main():
+	clear_logs()
     apikeys.init()
     version, codename = get_version()
 
