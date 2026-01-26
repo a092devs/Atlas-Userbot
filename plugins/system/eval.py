@@ -1,7 +1,6 @@
 import asyncio
 import sys
 import traceback
-import subprocess
 from io import StringIO
 
 from utils.respond import respond
@@ -29,11 +28,6 @@ def is_owner(event):
 
 
 def get_code(event, args):
-    """
-    Priority:
-    1. Replied message text
-    2. Inline arguments
-    """
     if event.reply_to_msg_id:
         reply = event.reply_to_message
         if reply and reply.text:
@@ -45,10 +39,27 @@ def get_code(event, args):
     return None
 
 
-def trim_output(text: str, limit: int = 4000) -> str:
+def stringify(obj):
+    try:
+        return str(obj)
+    except Exception:
+        return repr(obj)
+
+
+def trim(text: str, limit: int = 4000) -> str:
     if len(text) <= limit:
         return text
-    return text[:limit] + "\n… (truncated)"
+    return text[:limit] + "\n... (truncated)"
+
+
+def format_response(title, code, output):
+    return (
+        f"**{title}**\n\n"
+        f"Input:\n"
+        f"```python\n{code}\n```\n"
+        f"Output:\n"
+        f"```python\n{trim(output)}\n```"
+    )
 
 
 # -------------------------------------------------
@@ -58,42 +69,41 @@ async def handler(event, args):
     if not is_owner(event):
         return
 
-    cmd = event.raw_text.split()[0].lstrip("./")
+    command = event.raw_text.split()[0].lstrip("./")
     code = get_code(event, args)
 
     if not code:
-        return await respond(event, "❌ **No code provided.**")
+        return await respond(event, "No code provided.")
 
     # -------------------------------------------------
-    # .eval (expression)
+    # eval
     # -------------------------------------------------
-    if cmd == "eval":
+    if command == "eval":
         try:
             result = eval(code, {"__builtins__": __builtins__}, {})
-            output = repr(result)
+            output = stringify(result)
 
             await respond(
                 event,
-                f"✅ **Eval Result:**\n```python\n{trim_output(output)}\n```",
+                format_response("Eval", code, output),
             )
 
         except Exception:
-            err = traceback.format_exc()
+            error = traceback.format_exc()
+
             await respond(
                 event,
-                f"❌ **Eval Error:**\n```python\n{trim_output(err)}\n```",
+                format_response("Eval Error", code, error),
             )
 
-            await log_event(
-                event="Eval Error",
-                details=err,
-            )
+            await log_event("Eval Error", error)
+
         return
 
     # -------------------------------------------------
-    # .exec (python block)
+    # exec
     # -------------------------------------------------
-    if cmd == "exec":
+    if command == "exec":
         old_stdout = sys.stdout
         old_stderr = sys.stderr
 
@@ -105,30 +115,26 @@ async def handler(event, args):
 
         try:
             exec(code, {"__builtins__": __builtins__}, {})
+
             out = stdout.getvalue()
             err = stderr.getvalue()
 
-            if not out and not err:
-                out = "✓ Code executed successfully."
-
-            text = out if out else err
+            output = out or err or "Code executed successfully."
 
             await respond(
                 event,
-                f"🧠 **Exec Output:**\n```python\n{trim_output(text)}\n```",
+                format_response("Exec", code, output),
             )
 
         except Exception:
-            err = traceback.format_exc()
+            error = traceback.format_exc()
+
             await respond(
                 event,
-                f"❌ **Exec Error:**\n```python\n{trim_output(err)}\n```",
+                format_response("Exec Error", code, error),
             )
 
-            await log_event(
-                event="Exec Error",
-                details=err,
-            )
+            await log_event("Exec Error", error)
 
         finally:
             sys.stdout = old_stdout
@@ -137,9 +143,9 @@ async def handler(event, args):
         return
 
     # -------------------------------------------------
-    # .sh (shell)
+    # shell
     # -------------------------------------------------
-    if cmd == "sh":
+    if command == "sh":
         try:
             process = await asyncio.create_subprocess_shell(
                 code,
@@ -148,31 +154,24 @@ async def handler(event, args):
             )
 
             stdout, stderr = await process.communicate()
-
-            output = ""
-            if stdout:
-                output += stdout.decode()
-            if stderr:
-                output += stderr.decode()
+            output = (stdout or b"").decode() + (stderr or b"").decode()
 
             if not output.strip():
-                output = "✓ Command executed successfully."
+                output = "Command executed successfully."
 
             await respond(
                 event,
-                f"🖥️ **Shell Output:**\n```bash\n{trim_output(output)}\n```",
+                format_response("Shell", code, output),
             )
 
         except Exception:
-            err = traceback.format_exc()
+            error = traceback.format_exc()
+
             await respond(
                 event,
-                f"❌ **Shell Error:**\n```python\n{trim_output(err)}\n```",
+                format_response("Shell Error", code, error),
             )
 
-            await log_event(
-                event="Shell Error",
-                details=err,
-            )
+            await log_event("Shell Error", error)
 
         return
