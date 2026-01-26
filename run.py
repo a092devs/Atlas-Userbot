@@ -25,7 +25,6 @@ from db import apikeys
 
 from utils.formatting import human_time
 
-# AFK imports
 from plugins.system.afk import AFK, clear_afk
 
 
@@ -76,8 +75,15 @@ async def reconcile_control_state() -> bool:
 # Main runtime
 # -------------------------------------------------
 async def main():
-    # 🔴 Clear logs on fresh start / update
+    # -------------------------------------------------
+    # Clear logs and GUARANTEE first entry
+    # -------------------------------------------------
     clear_logs()
+
+    await log_event(
+        event="Logs Cleared",
+        details="Fresh startup, restart, or update",
+    )
 
     apikeys.init()
     version, codename = get_version()
@@ -108,18 +114,13 @@ async def main():
             await handle_incoming(event)
 
     log.info(f"Atlas runtime initialized — v{version} ({codename})")
-
-    # -------------------------------------------------
-    # Reconcile restart/update AFTER everything is ready
-    # -------------------------------------------------
-    was_controlled = await reconcile_control_state()
-
-    # Only log "Bot started" on cold starts
-    if not was_controlled:
-        await log_event(
-            event="Bot started",
-            details=f"Atlas v{version} ({codename}) is up and running",
-        )
+    
+    await reconcile_control_state()
+    
+    await log_event(
+        event="Bot started",
+        details=f"Atlas v{version} ({codename}) is up and running",
+    )
 
     # Keep clients alive
     await asyncio.gather(
