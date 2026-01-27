@@ -69,3 +69,10 @@ config.env
 # Docker (optional)
 # -------------------------------
 docker-compose.override.yml
+
+# Editor swap files
+*.swp
+*.kate-swp
+*.swo
+*.tmp
+
