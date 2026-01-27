@@ -40,7 +40,7 @@ async def handler(event, args):
     reason = " ".join(args) if args else None
     set_afk(reason)
 
-    await log_event(
+    log_event(
         event="AFK",
         details="I’m AFK now" + (f" — {reason}" if reason else ""),
     )

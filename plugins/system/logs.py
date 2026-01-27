@@ -68,7 +68,7 @@ async def handler(event, args):
 
         await respond(event, "🧹 **Logs cleared successfully.**")
 
-        await log_event(
+        log_event(
             event="Logs Cleared",
             details="Log file was manually cleared",
         )
@@ -97,7 +97,7 @@ async def handler(event, args):
 
         await respond(event, f"✅ **Log level set to `{level_name}`**")
 
-        await log_event(
+        log_event(
             event="Log Level Changed",
             details=f"New level: {level_name}",
         )

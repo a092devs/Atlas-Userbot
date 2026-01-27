@@ -1,14 +1,12 @@
 import importlib
 import importlib.util
-import asyncio
 import subprocess
 import sys
 from pathlib import Path
 
 from dispatcher import dispatcher
 from config import config
-from utils.logger import log
-from utils.logger import log_event
+from utils.logger import log, log_event
 
 
 class Loader:
@@ -63,12 +61,11 @@ class Loader:
             while True:
                 try:
                     module = importlib.import_module(module_name)
-                    break  # ✅ Import successful
+                    break
 
                 except ModuleNotFoundError as e:
                     missing = e.name
 
-                    # If dependency is already installed, real error
                     if self._is_installed(missing):
                         log.error(
                             f"Dependency '{missing}' already installed but import failed "
@@ -87,19 +84,11 @@ class Loader:
                         module = None
                         break
 
-                    # Log successful dependency install
-                    try:
-                        loop = asyncio.get_running_loop()
-                        loop.create_task(
-                            log_event(
-                                event="Dependency Installed",
-                                details=f"{missing} installed for {module_name}",
-                            )
-                        )
-                    except RuntimeError:
-                        pass
-
-                    # retry import after install
+                    # Dependency installed log (SYNC)
+                    log_event(
+                        event="Dependency Installed",
+                        details=f"{missing} installed for {module_name}",
+                    )
 
                 except Exception as e:
                     log.error(f"Failed to load plugin: {module_name}")
@@ -143,7 +132,6 @@ class Loader:
                 if not name or not commands_meta:
                     continue
 
-                # Normalize commands
                 if isinstance(commands_meta, list):
                     commands = {cmd: "" for cmd in commands_meta}
                 elif isinstance(commands_meta, dict):
@@ -151,7 +139,6 @@ class Loader:
                 else:
                     continue
 
-                # Store metadata for help system
                 self.plugins[name.lower()] = {
                     "name": name,
                     "category": category,
@@ -159,7 +146,6 @@ class Loader:
                     "commands": commands,
                 }
 
-                # Register commands
                 for cmd in commands.keys():
                     dispatcher.register(cmd, handler)
 
@@ -171,33 +157,21 @@ class Loader:
                 self._log_plugin_failure(module_name, e)
 
         # -------------------------------------------------
-        # Startup summary (THIS WAS MISSING)
+        # Startup summary (SYNC)
         # -------------------------------------------------
-        try:
-            loop = asyncio.get_running_loop()
-            loop.create_task(
-                log_event(
-                    event="Plugins Loaded",
-                    details=f"{len(self.plugins)} plugins loaded successfully",
-                )
-            )
-        except RuntimeError:
-            pass
+        log_event(
+            event="Plugins Loaded",
+            details=f"{len(self.plugins)} plugins loaded successfully",
+        )
 
     # -------------------------------------------------
-    # Telegram error logger (safe)
+    # Plugin failure logger (SYNC)
     # -------------------------------------------------
     def _log_plugin_failure(self, module_name: str, error: Exception):
-        try:
-            loop = asyncio.get_running_loop()
-            loop.create_task(
-                log_event(
-                    event="Plugin failed to load",
-                    details=f"Plugin: {module_name}\nReason: {error}",
-                )
-            )
-        except RuntimeError:
-            pass
+        log_event(
+            event="Plugin failed to load",
+            details=f"Plugin: {module_name}\nReason: {error}",
+        )
 
 
 loader = Loader()

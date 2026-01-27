@@ -8,22 +8,19 @@ from clients import clients
 from dispatcher import dispatcher
 from loader import loader
 
-from utils.logger import log, clear_logs
-from utils.logger import setup as setup_logging
-from utils.logger import log_event
-
+from utils.logger import log, clear_logs, setup as setup_logging, log_event
 from plugins.utils.forwarder import start_worker, handle_incoming
 
 from db.control import (
     get_pending,
     mark_done,
     clear_all,
+    get_log_chat_id,
 )
 
 from core.version import get_version
 from db import apikeys
-
-from utils.formatting import human_time
+from config import config
 
 from plugins.system.afk import AFK, clear_afk
 
@@ -51,10 +48,10 @@ async def reconcile_control_state() -> bool:
         await client.edit_message(
             entity,
             row["message_id"],
-            f"✅ **{row['action'].capitalize()} completed successfully**",
+            f"Update completed successfully",
         )
 
-        await log_event(
+        log_event(
             event=f"{row['action'].capitalize()} completed",
             details="Operation finished successfully",
         )
@@ -76,11 +73,16 @@ async def reconcile_control_state() -> bool:
 # -------------------------------------------------
 async def main():
     # -------------------------------------------------
-    # Clear logs and GUARANTEE first entry
+    # Restore log group from DB (CRITICAL FIX)
+    # -------------------------------------------------
+    config.LOG_CHAT_ID = get_log_chat_id()
+
+    # -------------------------------------------------
+    # Clear logs and mark fresh startup
     # -------------------------------------------------
     clear_logs()
 
-    await log_event(
+    log_event(
         event="Logs Cleared",
         details="Fresh startup, restart, or update",
     )
@@ -95,7 +97,7 @@ async def main():
         print("\nRun `python gensession.py` first.\n")
         return
 
-    # Setup Telegram logging
+    # Attach Telegram client to logger
     if clients.bot:
         setup_logging(clients.bot)
 
@@ -104,6 +106,10 @@ async def main():
         await clients.user.get_dialogs()
 
     dispatcher.bind(clients.user, clients.bot)
+
+    # -------------------------------------------------
+    # Load plugins
+    # -------------------------------------------------
     loader.load()
 
     if clients.user:
@@ -114,15 +120,21 @@ async def main():
             await handle_incoming(event)
 
     log.info(f"Atlas runtime initialized — v{version} ({codename})")
-    
-    await reconcile_control_state()
-    
-    await log_event(
-        event="Bot started",
-        details=f"Atlas v{version} ({codename}) is up and running",
-    )
 
+    # -------------------------------------------------
+    # Reconcile restart/update AFTER everything is ready
+    # -------------------------------------------------
+    was_controlled = await reconcile_control_state()
+
+    if not was_controlled:
+        log_event(
+            event="Bot started",
+            details=f"Atlas v{version} ({codename}) is up and running",
+        )
+
+    # -------------------------------------------------
     # Keep clients alive
+    # -------------------------------------------------
     await asyncio.gather(
         *[
             c.run_until_disconnected()

@@ -96,7 +96,7 @@ async def handler(event, args):
                 format_response("Eval Error", code, error),
             )
 
-            await log_event("Eval Error", error)
+            log_event("Eval Error", error)
 
         return
 
@@ -134,7 +134,7 @@ async def handler(event, args):
                 format_response("Exec Error", code, error),
             )
 
-            await log_event("Exec Error", error)
+            log_event("Exec Error", error)
 
         finally:
             sys.stdout = old_stdout
@@ -172,6 +172,6 @@ async def handler(event, args):
                 format_response("Shell Error", code, error),
             )
 
-            await log_event("Shell Error", error)
+            log_event("Shell Error", error)
 
         return

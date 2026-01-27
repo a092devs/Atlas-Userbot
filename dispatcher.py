@@ -52,7 +52,7 @@ class Dispatcher:
         if AFK.get("enabled"):
             if not text.startswith(".afk"):
                 clear_afk()
-                await log_event(
+                log_event(
                     event="AFK",
                     details="I’m back online",
                 )
@@ -100,7 +100,7 @@ class Dispatcher:
             log.exception(f"Unhandled exception in command '{command}'")
 
             # User-facing logging (short & safe)
-            await log_event(
+            log_event(
                 event="Command Error",
                 details=event.raw_text or command,
             )

@@ -107,7 +107,7 @@ async def handler(event, args):
     # ---------------- reload ----------------
     if action == "reload":
         reload_modules()
-        await log_event("Modules Reloaded")
+        log_event("Modules Reloaded")
         return await respond(event, "🔄 **Modules reloaded successfully**")
 
     # ---------------- install ----------------
@@ -154,7 +154,7 @@ async def handler(event, args):
 
         reload_modules()
 
-        await log_event("Module Installed", f"{name} ({category})")
+        log_event("Module Installed", f"{name} ({category})")
 
         return await respond(
             event,

@@ -262,7 +262,7 @@ async def handler(event, args):
         _save_rules_index(rules)
         _save_rule(rule_id, rule)
 
-        await log_event(
+        log_event(
             event="Forwarder",
             details=(
                 "Rule added\n"
@@ -296,7 +296,7 @@ async def handler(event, args):
         _save_rules_index(rules)
         _delete_rule(rule_id)
 
-        await log_event("Forwarder", f"Rule deleted\nID: {rule_id}")
+        log_event("Forwarder", f"Rule deleted\nID: {rule_id}")
         return await respond(event, f"🗑 **Rule `{rule_id}` deleted.**")
 
     # ---------------- fw on / off ----------------
