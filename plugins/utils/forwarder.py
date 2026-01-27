@@ -6,7 +6,7 @@ from telethon.errors import FloodWaitError
 
 from db.core import db
 from utils.respond import respond
-from log.logger import log_event
+from utils.logger import log_event
 
 
 # -------------------------------------------------

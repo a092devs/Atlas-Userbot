@@ -9,8 +9,8 @@ from dispatcher import dispatcher
 from loader import loader
 
 from utils.logger import log, clear_logs
-from log.logger import setup as setup_logging
-from log.logger import log_event
+from utils.logger import setup as setup_logging
+from utils.logger import log_event
 
 from plugins.utils.forwarder import start_worker, handle_incoming
 

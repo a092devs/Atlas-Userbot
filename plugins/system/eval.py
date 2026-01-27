@@ -5,7 +5,7 @@ from io import StringIO
 
 from utils.respond import respond
 from config import config
-from log.logger import log_event
+from utils.logger import log_event
 
 
 __plugin__ = {

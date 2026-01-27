@@ -4,7 +4,7 @@ import logging
 
 from utils.respond import respond
 from config import config
-from log.logger import log_event
+from utils.logger import log_event
 from utils.logger import LOG_FILE_PATH, clear_logs, set_log_level, get_log_level
 
 

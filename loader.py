@@ -8,7 +8,7 @@ from pathlib import Path
 from dispatcher import dispatcher
 from config import config
 from utils.logger import log
-from log.logger import log_event
+from utils.logger import log_event
 
 
 class Loader:

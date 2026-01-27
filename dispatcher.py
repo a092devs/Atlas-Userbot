@@ -2,7 +2,7 @@ from telethon.events import NewMessage
 
 from config import config
 from utils.logger import log
-from log.logger import log_event
+from utils.logger import log_event
 
 # AFK imports
 from plugins.system.afk import AFK, clear_afk

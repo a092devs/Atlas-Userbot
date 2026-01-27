@@ -1,7 +1,7 @@
 import time
 
 from utils.respond import respond
-from log.logger import log_event
+from utils.logger import log_event
 
 
 __plugin__ = {

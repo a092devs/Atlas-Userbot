@@ -6,7 +6,7 @@ from pathlib import Path
 
 from config import config
 from utils.respond import respond
-from log.logger import log_event
+from utils.logger import log_event
 from db.control import set_action
 
 
