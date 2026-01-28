@@ -1,6 +1,6 @@
 from utils.respond import respond
 from config import config
-from log.logger import log_event
+from utils.logger import log_event
 
 from db import apikeys as apikeys_db
 
@@ -46,7 +46,7 @@ async def handler(event, args):
 
         apikeys_db.set_key(name, value)
 
-        await log_event(
+        log_event(
             event="API key set",
             details=f"Key: {name}",
         )
@@ -64,7 +64,7 @@ async def handler(event, args):
         name = args[0].upper()
         apikeys_db.delete_key(name)
 
-        await log_event(
+        log_event(
             event="API key deleted",
             details=f"Key: {name}",
         )

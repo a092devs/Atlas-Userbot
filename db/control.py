@@ -26,3 +26,29 @@ def mark_done(action_id, status):
 
 def clear_all():
     db.execute("DELETE FROM control_state")
+
+
+_LOG_CHAT_KEY = "log_chat_id"
+
+
+def get_log_chat_id():
+    row = db.execute(
+        "SELECT value FROM kv_store WHERE key=?",
+        (_LOG_CHAT_KEY,),
+    ).fetchone()
+    return int(row["value"]) if row else None
+
+
+def set_log_chat_id(chat_id: int):
+    db.execute(
+        "INSERT OR REPLACE INTO kv_store (key, value) VALUES (?, ?)",
+        (_LOG_CHAT_KEY, str(chat_id)),
+    )
+
+
+def clear_log_chat_id():
+    db.execute(
+        "DELETE FROM kv_store WHERE key=?",
+        (_LOG_CHAT_KEY,),
+    )
+

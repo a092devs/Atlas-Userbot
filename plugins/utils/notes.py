@@ -1,6 +1,6 @@
 from db.core import db
 from utils.respond import respond
-from log.logger import log_event
+from utils.logger import log_event
 
 
 __plugin__ = {
@@ -74,7 +74,7 @@ async def handler(event, args):
 
         db.set(_key(chat_id, name), content)
 
-        await log_event(
+        log_event(
             event="NOTE_SET",
             details=f"Saved note '{name}'",
         )
@@ -128,7 +128,7 @@ async def handler(event, args):
 
         db.delete(key)
 
-        await log_event(
+        log_event(
             event="NOTE_DELETE",
             details=f"Deleted note '{name}'",
         )

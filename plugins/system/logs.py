@@ -4,7 +4,7 @@ import logging
 
 from utils.respond import respond
 from config import config
-from log.logger import log_event
+from utils.logger import log_event
 from utils.logger import LOG_FILE_PATH, clear_logs, set_log_level, get_log_level
 
 
@@ -68,7 +68,7 @@ async def handler(event, args):
 
         await respond(event, "🧹 **Logs cleared successfully.**")
 
-        await log_event(
+        log_event(
             event="Logs Cleared",
             details="Log file was manually cleared",
         )
@@ -97,7 +97,7 @@ async def handler(event, args):
 
         await respond(event, f"✅ **Log level set to `{level_name}`**")
 
-        await log_event(
+        log_event(
             event="Log Level Changed",
             details=f"New level: {level_name}",
         )

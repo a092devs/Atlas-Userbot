@@ -4,7 +4,7 @@ import tempfile
 import uuid
 
 from utils.respond import respond
-from log.logger import log_event
+from utils.logger import log_event
 
 
 __plugin__ = {
@@ -104,7 +104,7 @@ async def handler(event, args):
                 caption="🎵 **Audio downloaded**" if audio else "🎥 **Video downloaded**",
             )
 
-            await log_event(
+            log_event(
                 event="YTDL",
                 details=(
                     "Audio download" if audio else "Video download"

@@ -6,7 +6,7 @@ from pathlib import Path
 
 from config import config
 from utils.respond import respond
-from log.logger import log_event
+from utils.logger import log_event
 from db.control import set_action
 
 
@@ -96,7 +96,7 @@ async def handler(event, args):
             message_id=message_id,
         )
 
-        await log_event("Restart Initiated", "Restart requested")
+        log_event("Restart Initiated", "Restart requested")
         await asyncio.sleep(1)
 
         os.execv(sys.executable, [sys.executable] + sys.argv)
@@ -144,7 +144,7 @@ async def handler(event, args):
             message_id=message_id,
         )
 
-        await log_event("Update Initiated", "Update requested")
+        log_event("Update Initiated", "Update requested")
 
         try:
             run_git(["git", "pull", "--ff-only"])
