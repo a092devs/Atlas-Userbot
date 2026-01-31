@@ -1,25 +1,24 @@
-import asyncio
-
 from telethon.errors import YouBlockedUserError
-from telethon.tl.functions.messages import ForwardMessagesRequest
 
+from dispatcher import dispatcher
+from utils.respond import respond
 from utils.logger import log_event
 
 
 __plugin__ = {
     "name": "Xiaomi",
     "category": "utils",
-    "description": "Xiaomi device info via @XiaomiGeeksBot",
+    "description": "Fetch Xiaomi device information via XiaomiGeeksBot",
     "commands": {
-        "fw": "Get latest firmware",
-        "vendor": "Get latest vendor",
+        "fw": "Get firmware info",
+        "vendor": "Get vendor image",
         "specs": "Get device specs",
         "fastboot": "Get fastboot ROM",
         "recovery": "Get recovery ROM",
         "of": "Get OrangeFox recovery",
         "latest": "Get latest OS info",
         "archive": "Get official ROM archive",
-        "eu": "Get Xiaomi.eu ROMs",
+        "eu": "Get Xiaomi.eu ROM",
         "twrp": "Get TWRP recovery",
         "models": "Get device models",
         "whatis": "Get device name from codename",
@@ -30,44 +29,44 @@ XIAOMI_BOT = "XiaomiGeeksBot"
 
 
 # -------------------------------------------------
-# Core helper
+# Conversation helper (NO SPAM)
 # -------------------------------------------------
 
-async def _xiaomi_request(
-    event,
-    bot_command: str,
-    codename: str,
-    loading_text: str,
-):
+async def _xiaomi_conv(event, query: str, loading_text: str):
+    client = event.client
+
+    # Edit the original command message (KEEP THIS)
+    status_msg = await event.edit(loading_text)
+
     try:
-        # Edit original command message
-        await event.edit(loading_text)
+        async with client.conversation(XIAOMI_BOT, timeout=15) as conv:
+            # Send message to Xiaomi bot
+            sent = await conv.send_message(query)
 
-        async with event.client.conversation(
-            XIAOMI_BOT, timeout=20
-        ) as conv:
-            await conv.send_message(f"/{bot_command} {codename}")
-            response = await conv.get_response()
+            # Receive reply
+            reply = await conv.get_response(timeout=10)
 
-        # Forward bot reply
-        await event.client(
-            ForwardMessagesRequest(
-                from_peer=XIAOMI_BOT,
-                id=[response.id],
-                to_peer=event.chat_id,
+            # Forward reply to current chat
+            await client.forward_messages(
+                event.chat_id,
+                reply.id,
+                XIAOMI_BOT,
             )
-        )
 
-        # Remove loading message
-        await event.delete()
+            # 🔥 Cleanup ONLY bot-side messages
+            await client.delete_messages(
+                XIAOMI_BOT,
+                [sent.id, reply.id],
+            )
+
+            # ❗ Do NOT delete or edit status_msg anymore
 
     except YouBlockedUserError:
-        await event.edit("Please unblock @XiaomiGeeksBot first.")
-    except asyncio.TimeoutError:
-        await event.edit("No response from XiaomiGeeksBot.")
+        await status_msg.edit("Please unblock @XiaomiGeeksBot first.")
+
     except Exception as e:
         log_event("Xiaomi Error", str(e))
-        await event.edit("Failed to fetch data.")
+        await status_msg.edit("Failed to fetch data.")
 
 
 # -------------------------------------------------
@@ -76,51 +75,54 @@ async def _xiaomi_request(
 
 async def handler(event, args):
     if not args:
-        return await event.edit("Usage: .fw <codename>")
+        return await respond(event, "Usage: .<command> <codename>")
 
-    user_cmd = event.raw_text.split()[0].lstrip("./").lower()
+    cmd = event.raw_text.lstrip("./").split()[0].lower()
     codename = args[0]
 
-    # Map USER command → BOT command
-    bot_command_map = {
-        "fw": "firmware",
-        "vendor": "vendor",
-        "specs": "specs",
-        "fastboot": "fastboot",
-        "recovery": "recovery",
-        "of": "of",
-        "latest": "latest",
-        "archive": "archive",
-        "eu": "eu",
-        "twrp": "twrp",
-        "models": "models",
-        "whatis": "whatis",
+    # fw is userbot alias → bot MUST get /firmware
+    if cmd == "fw":
+        return await _xiaomi_conv(
+            event,
+            f"/firmware {codename}",
+            "Fetching firmware info…",
+        )
+
+    mapping = {
+        "vendor": "/vendor",
+        "specs": "/specs",
+        "fastboot": "/fastboot",
+        "recovery": "/recovery",
+        "of": "/of",
+        "latest": "/latest",
+        "archive": "/archive",
+        "eu": "/eu",
+        "twrp": "/twrp",
+        "models": "/models",
+        "whatis": "/whatis",
     }
 
-    loading_messages = {
-        "fw": "Fetching firmware info…",
-        "vendor": "Fetching vendor info…",
-        "specs": "Fetching device specs…",
-        "fastboot": "Fetching fastboot ROM…",
-        "recovery": "Fetching recovery ROM…",
-        "of": "Fetching OrangeFox recovery…",
-        "latest": "Fetching latest OS info…",
-        "archive": "Fetching archive links…",
-        "eu": "Fetching Xiaomi.eu ROMs…",
-        "twrp": "Fetching TWRP recovery…",
-        "models": "Fetching models…",
-        "whatis": "Identifying device…",
-    }
+    if cmd in mapping:
+        return await _xiaomi_conv(
+            event,
+            f"{mapping[cmd]} {codename}",
+            f"Fetching {cmd} info…",
+        )
 
-    bot_cmd = bot_command_map.get(user_cmd)
-    loading = loading_messages.get(user_cmd)
 
-    if not bot_cmd or not loading:
-        return
+# -------------------------------------------------
+# Register commands
+# -------------------------------------------------
 
-    await _xiaomi_request(
-        event,
-        bot_command=bot_cmd,
-        codename=codename,
-        loading_text=loading,
-    )
+dispatcher.register("fw", handler)
+dispatcher.register("vendor", handler)
+dispatcher.register("specs", handler)
+dispatcher.register("fastboot", handler)
+dispatcher.register("recovery", handler)
+dispatcher.register("of", handler)
+dispatcher.register("latest", handler)
+dispatcher.register("archive", handler)
+dispatcher.register("eu", handler)
+dispatcher.register("twrp", handler)
+dispatcher.register("models", handler)
+dispatcher.register("whatis", handler)
