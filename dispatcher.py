@@ -5,9 +5,12 @@ import traceback
 from config import config
 from utils.logger import log_event
 
-# AFK imports
 from plugins.system.afk import AFK, clear_afk
 
+
+# -------------------------------------------------
+# Assistant abuse / rate limiting (assistant bot only)
+# -------------------------------------------------
 
 PM_RATE_LIMIT = 5
 PM_RATE_WINDOW = 60
@@ -38,13 +41,23 @@ def _rate_limited(user_id: int) -> bool:
     return False
 
 
+# -------------------------------------------------
+# Dispatcher
+# -------------------------------------------------
+
 class Dispatcher:
     def __init__(self):
         self.commands = {}
 
+    # ---------------------------------------------
+    # Register commands
+    # ---------------------------------------------
     def register(self, command: str, handler):
         self.commands[command.lower()] = handler
 
+    # ---------------------------------------------
+    # Bind clients
+    # ---------------------------------------------
     def bind(self, user, bot=None):
         if user:
             user.add_event_handler(
@@ -58,29 +71,36 @@ class Dispatcher:
                 NewMessage(incoming=True),
             )
 
+    # ---------------------------------------------
+    # USERBOT HANDLER (.)
+    # ---------------------------------------------
     async def user_handler(self, event):
         if config.RUN_MODE == "bot":
             return
 
         text = (event.raw_text or "").strip()
 
-        if AFK.get("enabled"):
-            if not text.startswith(".afk"):
-                clear_afk()
-                log_event("AFK", "I’m back online")
+        # AFK auto-disable
+        if AFK.get("enabled") and not text.startswith(".afk"):
+            clear_afk()
+            log_event("AFK", "I’m back online")
 
         await self._handle(event, ".")
 
+    # ---------------------------------------------
+    # ASSISTANT BOT HANDLER (/)
+    # ---------------------------------------------
     async def bot_handler(self, event):
         if config.RUN_MODE == "user":
             return
 
+        # Assistant PMs (any user allowed)
         if event.is_private:
             if event.sender_id != config.OWNER_ID:
                 if _rate_limited(event.sender_id):
                     return
 
-            # Run assistant PM handlers first
+            # Run assistant PM handlers (forward/reply)
             for handler in self.commands.values():
                 if getattr(handler, "_assistant_pm", False):
                     try:
@@ -91,14 +111,19 @@ class Dispatcher:
                             traceback.format_exc(limit=6),
                         )
 
-            # Owner can still run commands
+            # Owner can still issue commands
             if event.sender_id == config.OWNER_ID:
                 await self._handle(event, "/")
+
             return
 
+        # Non-PM assistant commands (owner only)
         if event.sender_id == config.OWNER_ID:
             await self._handle(event, "/")
 
+    # ---------------------------------------------
+    # COMMAND DISPATCH
+    # ---------------------------------------------
     async def _handle(self, event, prefix):
         text = event.raw_text or ""
         if not text.startswith(prefix):
