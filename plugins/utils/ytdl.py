@@ -1,7 +1,8 @@
-import asyncio
 import os
-import tempfile
-import uuid
+from urllib.parse import urlparse, parse_qs
+
+import aiohttp
+from yt_dlp import YoutubeDL
 
 from utils.respond import respond
 from utils.logger import log_event
@@ -10,106 +11,169 @@ from utils.logger import log_event
 __plugin__ = {
     "name": "YTDL",
     "category": "utils",
-    "description": "Download videos or audio from YouTube and other sites",
+    "description": "Download videos or audio from YouTube",
     "commands": {
-        "ytdl": "Download video from a URL",
-        "ytdl audio": "Download audio only (mp3)",
+        "ytv": "Download YouTube video",
+        "yta": "Download YouTube audio",
     },
 }
+
+DOWNLOAD_DIR = "downloads"
+THUMB_PATH = "downloads/thumb.jpg"
+
+os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+
+# -------------------------------------------------
+# GLOBAL DOWNLOAD LOCK (single instance)
+# -------------------------------------------------
+_DOWNLOAD_RUNNING = False
+
+
+# -------------------------------------------------
+# yt-dlp silent logger
+# -------------------------------------------------
+
+class DummyLogger:
+    def debug(self, msg): pass
+    def warning(self, msg): pass
+    def error(self, msg): pass
 
 
 # -------------------------------------------------
 # Helpers
 # -------------------------------------------------
-def _build_cmd(url: str, audio: bool, outdir: str):
-    base = [
-        "yt-dlp",
-        "-o", f"{outdir}/%(title)s.%(ext)s",
-        "--no-playlist",
-        "--restrict-filenames",
-    ]
+
+def extract_video_id(url):
+    parsed = urlparse(url)
+    if parsed.hostname == "youtu.be":
+        return parsed.path.lstrip("/")
+    if parsed.hostname and "youtube" in parsed.hostname:
+        return parse_qs(parsed.query).get("v", [None])[0]
+    return None
+
+
+def ydl_opts(audio: bool):
+    opts = {
+        "outtmpl": f"{DOWNLOAD_DIR}/%(title)s.%(ext)s",
+        "noplaylist": True,
+        "default_search": "ytsearch1",
+
+        # silence yt-dlp completely
+        "quiet": True,
+        "no_warnings": True,
+        "logger": DummyLogger(),
+
+        # JS runtime / solver
+        "js_runtimes": {"node": {}, "deno": {}},
+        "remote_components": ["ejs:github"],
+    }
 
     if audio:
-        base += [
-            "-x",
-            "--audio-format", "mp3",
-            "--audio-quality", "0",
-        ]
+        opts.update(
+            {
+                "format": "bestaudio/best",
+                "postprocessors": [
+                    {
+                        "key": "FFmpegExtractAudio",
+                        "preferredcodec": "mp3",
+                        "preferredquality": "0",
+                    }
+                ],
+            }
+        )
+    else:
+        opts["format"] = "bv*+ba/b"
 
-    base.append(url)
-    return base
+    return opts
 
 
-async def _run_cmd(cmd: list[str]):
-    proc = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    stdout, stderr = await proc.communicate()
-    return proc.returncode, stdout.decode(), stderr.decode()
+async def fetch_thumb(url):
+    if not url:
+        return None
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as resp:
+            if resp.status == 200:
+                with open(THUMB_PATH, "wb") as f:
+                    f.write(await resp.read())
+                return THUMB_PATH
+    return None
 
 
 # -------------------------------------------------
 # Main handler
 # -------------------------------------------------
+
 async def handler(event, args):
+    global _DOWNLOAD_RUNNING
+
     if not args:
         return await respond(
             event,
-            "🎬 **YTDL**\n\n"
-            "**Usage:**\n"
-            "• `ytdl <url>` — download video\n"
-            "• `ytdl audio <url>` — download audio (mp3)",
+            "Usage:\n"
+            "ytv <url | name>\n"
+            "yta <url | name>",
         )
 
-    audio = False
-    url = None
+    # ---------------- single-instance guard ----------------
+    if _DOWNLOAD_RUNNING:
+        return await respond(
+            event,
+            "Another download is already in progress.\n"
+            "Please wait for it to finish.",
+        )
 
-    if args[0].lower() == "audio":
-        if len(args) < 2:
-            return await respond(event, "❌ Usage: `ytdl audio <url>`")
-        audio = True
-        url = args[1]
-    else:
-        url = args[0]
+    _DOWNLOAD_RUNNING = True
+    msg = None
 
-    await respond(event, "⏬ **Downloading...**")
+    try:
+        cmd = event.raw_text.lstrip("./").split()[0].lower()
+        audio = cmd == "yta"
+        query = " ".join(args)
 
-    # temp directory per request
-    with tempfile.TemporaryDirectory(
-        prefix=f"ytdl_{uuid.uuid4().hex}_"
-    ) as tmpdir:
+        msg = await respond(event, "Starting download")
 
-        cmd = _build_cmd(url, audio, tmpdir)
-        code, out, err = await _run_cmd(cmd)
+        with YoutubeDL(ydl_opts(audio)) as ydl:
+            info = ydl.extract_info(query, download=False)
 
-        if code != 0:
-            return await respond(
-                event,
-                "❌ **Download failed**\n\n"
-                f"`{err.strip() or out.strip()}`",
-            )
+            title = info.get("title", "Unknown")
+            thumb = await fetch_thumb(info.get("thumbnail"))
 
-        files = os.listdir(tmpdir)
-        if not files:
-            return await respond(event, "❌ Download produced no files.")
+            ydl.download([info["webpage_url"]])
 
-        path = os.path.join(tmpdir, files[0])
+        # pick latest downloaded file
+        path = max(
+            (os.path.join(DOWNLOAD_DIR, f) for f in os.listdir(DOWNLOAD_DIR)),
+            key=os.path.getmtime,
+        )
 
-        try:
-            await event.client.send_file(
+        if msg:
+            await event.client.edit_message(event.chat_id, msg.id, "Uploading")
+
+        await event.client.send_file(
+            event.chat_id,
+            path,
+            caption=title,
+            thumb=thumb,
+        )
+
+        # cleanup
+        os.remove(path)
+        if thumb and os.path.exists(thumb):
+            os.remove(thumb)
+
+        log_event("YTDL", "audio" if audio else "video")
+
+        if msg:
+            await event.client.delete_messages(event.chat_id, msg.id)
+
+    except Exception as e:
+        if msg:
+            await event.client.edit_message(
                 event.chat_id,
-                path,
-                caption="🎵 **Audio downloaded**" if audio else "🎥 **Video downloaded**",
+                msg.id,
+                f"Download failed: {e}",
             )
 
-            log_event(
-                event="YTDL",
-                details=(
-                    "Audio download" if audio else "Video download"
-                ),
-            )
-
-        except Exception as e:
-            await respond(event, f"❌ Failed to send file: `{e}`")
+    finally:
+        # 🔓 ALWAYS release lock
+        _DOWNLOAD_RUNNING = False

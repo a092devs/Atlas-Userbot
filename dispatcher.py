@@ -1,8 +1,8 @@
 from telethon.events import NewMessage
+import traceback
 
 from config import config
-from utils.logger import log
-from utils.logger import log_event
+from utils.logger import log, log_event
 
 # AFK imports
 from plugins.system.afk import AFK, clear_afk
@@ -95,14 +95,26 @@ class Dispatcher:
         try:
             await handler(event, args)
 
-        except Exception:
-            # 🔴 CRITICAL FIX: log full traceback
-            log.exception(f"Unhandled exception in command '{command}'")
+        except Exception as e:
+            # -------------------------------------------------
+            # FULL traceback to file / console
+            # -------------------------------------------------
+            tb = traceback.format_exc(limit=8)
+            log.error(
+                "Unhandled exception in command '%s'\n%s",
+                command,
+                tb,
+            )
 
-            # User-facing logging (short & safe)
+            # -------------------------------------------------
+            # CLEAN & USEFUL log group message
+            # -------------------------------------------------
             log_event(
                 event="Command Error",
-                details=event.raw_text or command,
+                details=(
+                    f"Command: {event.raw_text}\n"
+                    f"Error: {type(e).__name__}: {e}"
+                ),
             )
 
 
