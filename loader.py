@@ -84,7 +84,6 @@ class Loader:
                         module = None
                         break
 
-                    # Dependency installed log (SYNC)
                     log_event(
                         event="Dependency Installed",
                         details=f"{missing} installed for {module_name}",
@@ -115,46 +114,57 @@ class Loader:
                     continue
 
             # ---------------------------------------------
-            # Register plugin
+            # Register NORMAL command plugins (unchanged)
             # ---------------------------------------------
             try:
                 meta = getattr(module, "__plugin__", None)
                 handler = getattr(module, "handler", None)
 
-                if not meta or not handler:
-                    continue
+                if meta and handler:
+                    name = meta.get("name")
+                    category = meta.get("category", "misc")
+                    description = meta.get("description", "").strip()
+                    commands_meta = meta.get("commands", {})
 
-                name = meta.get("name")
-                category = meta.get("category", "misc")
-                description = meta.get("description", "").strip()
-                commands_meta = meta.get("commands", {})
+                    if name and commands_meta:
+                        if isinstance(commands_meta, list):
+                            commands = {cmd: "" for cmd in commands_meta}
+                        elif isinstance(commands_meta, dict):
+                            commands = commands_meta
+                        else:
+                            commands = {}
 
-                if not name or not commands_meta:
-                    continue
+                        if commands:
+                            self.plugins[name.lower()] = {
+                                "name": name,
+                                "category": category,
+                                "description": description,
+                                "commands": commands,
+                            }
 
-                if isinstance(commands_meta, list):
-                    commands = {cmd: "" for cmd in commands_meta}
-                elif isinstance(commands_meta, dict):
-                    commands = commands_meta
-                else:
-                    continue
+                            for cmd in commands.keys():
+                                dispatcher.register(cmd, handler)
 
-                self.plugins[name.lower()] = {
-                    "name": name,
-                    "category": category,
-                    "description": description,
-                    "commands": commands,
-                }
-
-                for cmd in commands.keys():
-                    dispatcher.register(cmd, handler)
-
-                log.info(f"Loaded plugin: {name}")
+                            log.info(f"Loaded plugin: {name}")
 
             except Exception as e:
                 log.error(f"Failed to register plugin: {module_name}")
                 log.error(str(e))
                 self._log_plugin_failure(module_name, e)
+
+            # ---------------------------------------------
+            # 🔥 REGISTER ASSISTANT PM HANDLERS (NEW)
+            # ---------------------------------------------
+            for attr in dir(module):
+                fn = getattr(module, attr)
+                if callable(fn) and getattr(fn, "_assistant_pm", False):
+                    dispatcher.register(
+                        f"__assistant_pm__{module_name}.{attr}",
+                        fn,
+                    )
+                    log.info(
+                        f"Registered assistant PM handler: {module_name}.{attr}"
+                    )
 
         # -------------------------------------------------
         # Startup summary (SYNC)

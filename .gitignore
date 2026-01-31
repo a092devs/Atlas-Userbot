@@ -76,3 +76,5 @@ docker-compose.override.yml
 *.swo
 *.tmp
 
+downloads/
+
