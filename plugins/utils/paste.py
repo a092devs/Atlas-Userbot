@@ -1,14 +1,13 @@
 import aiohttp
 import os
-import json
 
 
 __plugin__ = {
     "name": "Paste",
     "category": "utils",
-    "description": "Paste text to nekobin.com",
+    "description": "Paste text to dpaste.com",
     "commands": {
-        "paste": "Paste text (reply / args / file) to Nekobin",
+        "paste": "Paste text (reply / args / file) to dpaste",
     },
 }
 
@@ -45,34 +44,33 @@ async def extract_text(event, args):
 
 
 # =====================================================
-# Nekobin backend
+# dpaste backend (STABLE)
 # =====================================================
 
-async def paste_nekobin(text):
+async def paste_dpaste(text):
     async with aiohttp.ClientSession() as session:
         async with session.post(
-            "https://nekobin.com/api/documents",
-            json={"content": text},
+            "https://dpaste.com/api/v2/",
+            data={
+                "content": text,
+                "syntax": "text",
+                "expiry_days": 7,
+            },
             headers={
-                "User-Agent": "Mozilla/5.0",
-                "Content-Type": "application/json",
+                "User-Agent": "Atlas-Userbot",
             },
         ) as resp:
             if resp.status not in (200, 201):
                 return None
 
-            try:
-                data = await resp.json()
-            except Exception:
-                return None
+            url = (await resp.text()).strip()
 
-    key = data.get("result", {}).get("key")
-    if not key:
+    if not url.startswith("https://"):
         return None
 
     return {
-        "url": f"https://nekobin.com/{key}",
-        "raw": f"https://nekobin.com/{key}.txt",
+        "url": url,
+        "raw": f"{url}.txt",
     }
 
 
@@ -87,16 +85,16 @@ async def handler(event, args):
         await event.edit("❌ **No text found to paste.**")
         return
 
-    await event.edit("⏳ **Pasting to Nekobin...**")
+    await event.edit("⏳ **Pasting to dpaste...**")
 
-    result = await paste_nekobin(text)
+    result = await paste_dpaste(text)
 
     if not result:
         await event.edit("❌ **Paste failed.**")
         return
 
     await event.edit(
-        "✅ **Pasted to Nekobin**\n"
+        "✅ **Pasted to dpaste**\n"
         f"🔗 {result['url']}\n"
         f"📄 {result['raw']}",
         link_preview=False,
