@@ -6,9 +6,9 @@ import json
 __plugin__ = {
     "name": "Paste",
     "category": "utils",
-    "description": "Paste text to pasty.lus.pm",
+    "description": "Paste text to nekobin.com",
     "commands": {
-        "paste": "Paste text (reply / args / file) to pasty",
+        "paste": "Paste text (reply / args / file) to Nekobin",
     },
 }
 
@@ -25,7 +25,6 @@ async def extract_text(event, args):
         if reply.document:
             path = await reply.download_media()
             try:
-                # try reading as text (any extension)
                 with open(path, "r", encoding="utf-8", errors="ignore") as f:
                     content = f.read()
                     if content.strip():
@@ -46,33 +45,30 @@ async def extract_text(event, args):
 
 
 # =====================================================
-# Pasty backend
+# Nekobin backend
 # =====================================================
 
-async def paste_pasty(text):
+async def paste_nekobin(text):
     async with aiohttp.ClientSession() as session:
         async with session.post(
-            "https://pasty.lus.pm/api/v1/pastes",
+            "https://nekobin.com/api/documents",
             json={"content": text},
             headers={
                 "User-Agent": "Mozilla/5.0",
                 "Content-Type": "application/json",
             },
         ) as resp:
-            raw = await resp.text()
+            if resp.status != 200:
+                return None
+            data = await resp.json()
 
-    try:
-        data = json.loads(raw)
-    except Exception:
-        return None
-
-    pid = data.get("id")
-    if not pid:
+    key = data.get("result", {}).get("key")
+    if not key:
         return None
 
     return {
-        "url": f"https://pasty.lus.pm/{pid}.txt",
-        "raw": f"https://pasty.lus.pm/{pid}/raw",
+        "url": f"https://nekobin.com/{key}",
+        "raw": f"https://nekobin.com/raw/{key}",
     }
 
 
@@ -87,16 +83,16 @@ async def handler(event, args):
         await event.edit("❌ **No text found to paste.**")
         return
 
-    await event.edit("⏳ **Pasting to Pasty...**")
+    await event.edit("⏳ **Pasting to Nekobin...**")
 
-    result = await paste_pasty(text)
+    result = await paste_nekobin(text)
 
     if not result:
         await event.edit("❌ **Paste failed.**")
         return
 
     await event.edit(
-        "✅ **Pasted to Pasty**\n"
+        "✅ **Pasted to Nekobin**\n"
         f"🔗 {result['url']}\n"
         f"📄 {result['raw']}",
         link_preview=False,
