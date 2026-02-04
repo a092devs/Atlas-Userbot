@@ -58,9 +58,13 @@ async def paste_nekobin(text):
                 "Content-Type": "application/json",
             },
         ) as resp:
-            if resp.status != 200:
+            if resp.status not in (200, 201):
                 return None
-            data = await resp.json()
+
+            try:
+                data = await resp.json()
+            except Exception:
+                return None
 
     key = data.get("result", {}).get("key")
     if not key:
@@ -68,7 +72,7 @@ async def paste_nekobin(text):
 
     return {
         "url": f"https://nekobin.com/{key}",
-        "raw": f"https://nekobin.com/raw/{key}",
+        "raw": f"https://nekobin.com/{key}.txt",
     }
 
 
