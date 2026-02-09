@@ -24,12 +24,12 @@ __plugin__ = {
     "category": "utils",
     "description": "Automatically forward messages between chats",
     "commands": {
-        "fw": "Base command for message forwarder",
-        "fw add": "Add a new forwarding rule (ID or @username)",
-        "fw del": "Delete a forwarding rule",
-        "fw list": "List all forwarding rules",
-        "fw on": "Enable a forwarding rule",
-        "fw off": "Disable a forwarding rule",
+        "fwd": "Base command for message forwarder",
+        "fwd add": "Add a new forwarding rule (ID or @username)",
+        "fwd del": "Delete a forwarding rule",
+        "fwd list": "List all forwarding rules",
+        "fwd on": "Enable a forwarding rule",
+        "fwd off": "Disable a forwarding rule",
     },
 }
 
@@ -225,19 +225,19 @@ async def handler(event, args):
             event,
             "🔁 **Forwarder**\n\n"
             "**Commands:**\n"
-            "• `fw add <src_id|@src> <dst_id|@dst>`\n"
-            "• `fw del <rule_id>`\n"
-            "• `fw on <rule_id>`\n"
-            "• `fw off <rule_id>`\n"
-            "• `fw list`",
+            "• `fwd add <src_id|@src> <dst_id|@dst>`\n"
+            "• `fwd del <rule_id>`\n"
+            "• `fwd on <rule_id>`\n"
+            "• `fwd off <rule_id>`\n"
+            "• `fwd list`",
         )
 
     cmd = args[0].lower()
 
-    # ---------------- fw add ----------------
+    # ---------------- fwd add ----------------
     if cmd == "add":
         if len(args) < 3:
-            return await respond(event, "❌ Usage: `fw add <src> <dst>`")
+            return await respond(event, "❌ Usage: `fwd add <src> <dst>`")
 
         src = await _resolve_chat(event, args[1])
         dst = await _resolve_chat(event, args[2])
@@ -281,10 +281,10 @@ async def handler(event, args):
             "⚙️ **Status:** Enabled",
         )
 
-    # ---------------- fw del ----------------
+    # ---------------- fwd del ----------------
     if cmd == "del":
         if len(args) < 2:
-            return await respond(event, "❌ Usage: `fw del <rule_id>`")
+            return await respond(event, "❌ Usage: `fwd del <rule_id>`")
 
         rule_id = args[1]
         rules = _rules_index()
@@ -316,7 +316,7 @@ async def handler(event, args):
         state = "enabled" if cmd == "on" else "disabled"
         return await respond(event, f"⚙️ **Rule `{rule_id}` {state}.**")
 
-    # ---------------- fw list ----------------
+    # ---------------- fwd list ----------------
     if cmd == "list":
         rules = _rules_index()
         if not rules:
@@ -340,4 +340,4 @@ async def handler(event, args):
 
         return await respond(event, text.strip())
 
-    return await respond(event, "❌ Unknown subcommand. Use `fw`.")
+    return await respond(event, "❌ Unknown subcommand. Use `fwd`.")
