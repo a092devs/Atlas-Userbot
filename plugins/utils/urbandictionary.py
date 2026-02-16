@@ -61,14 +61,12 @@ async def handler(event, args):
 
     definition = html.escape(result.get("definition", "N/A"))
     example = html.escape(result.get("example", "N/A"))
-    thumbs_up = result.get("thumbs_up", 0)
-    thumbs_down = result.get("thumbs_down", 0)
 
-    # Clean up formatting (Urban Dictionary adds brackets)
+    # Urban Dictionary formatting cleanup
     definition = definition.replace("[", "").replace("]", "")
     example = example.replace("[", "").replace("]", "")
 
-    # Limit length to avoid Telegram message limit
+    # Prevent Telegram message length issues
     if len(definition) > 1500:
         definition = definition[:1500] + "..."
     if len(example) > 800:
@@ -78,8 +76,7 @@ async def handler(event, args):
         "**Urban Dictionary**\n\n"
         f"**Word:** {word}\n\n"
         f"**Definition:**\n{definition}\n\n"
-        f"**Example:**\n{example}\n\n"
-        f"👍 {thumbs_up} | 👎 {thumbs_down}"
+        f"**Example:**\n{example}"
     )
 
     await respond(event, text)
