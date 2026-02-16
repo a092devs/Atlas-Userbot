@@ -59,14 +59,15 @@ async def handler(event, args):
 
     result = results[0]
 
-    definition = html.escape(result.get("definition", "N/A"))
-    example = html.escape(result.get("example", "N/A"))
+    # Decode HTML entities properly (fixes &quot;, &#x27;, etc.)
+    definition = html.unescape(result.get("definition", "N/A"))
+    example = html.unescape(result.get("example", "N/A"))
 
-    # Urban Dictionary formatting cleanup
+    # Remove Urban Dictionary bracket formatting
     definition = definition.replace("[", "").replace("]", "")
     example = example.replace("[", "").replace("]", "")
 
-    # Prevent Telegram message length issues
+    # Prevent Telegram message limit issues
     if len(definition) > 1500:
         definition = definition[:1500] + "..."
     if len(example) > 800:
