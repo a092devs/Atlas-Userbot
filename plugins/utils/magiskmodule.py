@@ -6,9 +6,9 @@ from utils.respond import respond
 __plugin__ = {
     "name": "MagiskRepoSearcher",
     "category": "utils",
-    "description": "Search Magisk modules and get latest release links",
+    "description": "Search root/Magisk/KernelSU related repositories and get latest release links",
     "commands": {
-        "mrepo": "Search Magisk modules",
+        "mrepo": "Search repositories",
     },
 }
 
@@ -21,7 +21,8 @@ RESULTS_PER_PAGE = 8
 
 async def search_modules(query):
     params = {
-        "q": f"{query} topic:magisk-module",
+        # 🔥 Removed strict topic filter
+        "q": f"{query} in:name,description",
         "sort": "stars",
         "order": "desc",
         "per_page": 30,
@@ -94,16 +95,16 @@ async def handler(event, args):
 
     # 🔍 New search
     if not args:
-        return await respond(event, "Usage:\n.mrepo <module name>")
+        return await respond(event, "Usage:\n.mrepo <repository name>")
 
     query = " ".join(args)
 
-    await respond(event, "`Searching Magisk modules...`")
+    await respond(event, "`Searching repositories...`")
 
     data = await search_modules(query)
 
     if "items" not in data or not data["items"]:
-        return await respond(event, "No modules found.")
+        return await respond(event, "No repositories found.")
 
     SEARCH_CACHE[chat_id] = {
         "results": data["items"],
@@ -123,7 +124,7 @@ async def show_page(event, cache):
 
     total_pages = (len(results) - 1) // RESULTS_PER_PAGE + 1
 
-    text = f"**Magisk Module Search** (Page {page+1}/{total_pages})\n\n"
+    text = f"**Repository Search** (Page {page+1}/{total_pages})\n\n"
 
     for i, repo in enumerate(sliced, start=start + 1):
         text += (
