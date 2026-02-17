@@ -1,21 +1,20 @@
 import aiohttp
-import os
 
 from utils.respond import respond
 
+
 __plugin__ = {
-    "name": "MagiskModuleSearcher",
+    "name": "MagiskRepoSearcher",
     "category": "utils",
-    "description": "Search and download Magisk modules from GitHub",
+    "description": "Search Magisk modules and get latest release link",
     "commands": {
-        "magisk": "Search Magisk modules or download by number",
+        "mrepo": "Search Magisk modules",
     },
 }
 
 SEARCH_API = "https://api.github.com/search/repositories"
 RELEASE_API = "https://api.github.com/repos/{owner}/{repo}/releases/latest"
 
-# In-memory cache per chat
 SEARCH_CACHE = {}
 RESULTS_PER_PAGE = 8
 
@@ -43,66 +42,61 @@ async def get_latest_release(owner, repo):
 
 async def handler(event, args):
     chat_id = event.chat_id
+    reply = await event.get_reply_message()
 
-    if not args:
-        return await respond(event, "Usage:\n.magisk <module name>")
+    # Handle reply navigation (n / p / number)
+    if reply and chat_id in SEARCH_CACHE:
+        reply_text = event.raw_text.strip().lower()
 
-    query = " ".join(args).strip().lower()
-
-    # Navigation
-    if query in ("next", "prev") and chat_id in SEARCH_CACHE:
         cache = SEARCH_CACHE[chat_id]
-        if query == "next":
+
+        # Next page
+        if reply_text == "n":
             cache["page"] += 1
-        else:
+            await event.delete()
+            return await show_page(event, cache)
+
+        # Previous page
+        if reply_text == "p":
             cache["page"] = max(0, cache["page"] - 1)
+            await event.delete()
+            return await show_page(event, cache)
 
-        return await show_page(event, cache)
+        # Selection
+        if reply_text.isdigit():
+            index = int(reply_text) - 1
+            results = cache["results"]
 
-    # Selection
-    if query.isdigit() and chat_id in SEARCH_CACHE:
-        index = int(query) - 1
-        cache = SEARCH_CACHE[chat_id]
-        results = cache["results"]
+            if index < 0 or index >= len(results):
+                await event.delete()
+                return await respond(event, "Invalid selection.")
 
-        if index < 0 or index >= len(results):
-            return await respond(event, "Invalid selection.")
+            repo = results[index]
+            owner = repo["owner"]["login"]
+            name = repo["name"]
 
-        repo = results[index]
-        owner = repo["owner"]["login"]
-        name = repo["name"]
+            await event.delete()
+            await respond(event, "`Fetching latest release...`")
 
-        await respond(event, "`Fetching latest release...`")
+            release = await get_latest_release(owner, name)
+            assets = release.get("assets", [])
 
-        release = await get_latest_release(owner, name)
+            if not assets:
+                return await respond(event, "No release assets found.")
 
-        assets = release.get("assets", [])
-        if not assets:
-            return await respond(event, "No downloadable release found.")
+            text = f"**{name} - Latest Release**\n\n"
 
-        asset = assets[0]
-        download_url = asset["browser_download_url"]
-        filename = asset["name"]
+            for asset in assets:
+                text += f"{asset['name']}\n{asset['browser_download_url']}\n\n"
 
-        await respond(event, "`Downloading module...`")
+            return await respond(event, text)
 
-        async with aiohttp.ClientSession() as session:
-            async with session.get(download_url) as resp:
-                content = await resp.read()
+    # New search
+    if not args:
+        return await respond(event, "Usage:\n.mrepo <module name>")
 
-        with open(filename, "wb") as f:
-            f.write(content)
+    query = " ".join(args)
 
-        await event.client.send_file(
-            event.chat_id,
-            filename,
-            caption=f"{name} - Latest Release"
-        )
-
-        os.remove(filename)
-        return
-
-    # New Search
     await respond(event, "`Searching Magisk modules...`")
 
     data = await search_modules(query)
@@ -130,6 +124,7 @@ async def show_page(event, cache):
     sliced = results[start:end]
 
     if not sliced:
+        cache["page"] = max(0, page - 1)
         return await respond(event, "No more results.")
 
     total_pages = (len(results) - 1) // RESULTS_PER_PAGE + 1
@@ -139,11 +134,13 @@ async def show_page(event, cache):
     for i, repo in enumerate(sliced, start=start + 1):
         text += (
             f"{i}. **{repo['name']}**\n"
-            f"⭐ {repo['stargazers_count']} | "
+            f"⭐ {repo['stargazers_count']}\n"
             f"{repo['html_url']}\n\n"
         )
 
-    text += "Use `.magisk <number>` to download.\n"
-    text += "Use `.magisk next` or `.magisk prev` to navigate."
+    text += "Reply with:\n"
+    text += "`n` → next page\n"
+    text += "`p` → previous page\n"
+    text += "`number` → get release link"
 
     await respond(event, text)
