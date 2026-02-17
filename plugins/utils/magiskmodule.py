@@ -18,11 +18,7 @@ RELEASE_API = "https://api.github.com/repos/{owner}/{repo}/releases/latest"
 
 SEARCH_CACHE = {}
 
-
-# 🔥 Only top 5
 MAX_RESULTS = 5
-
-# Consider repo active if updated within last 18 months
 ACTIVE_MONTHS = 18
 
 
@@ -44,19 +40,13 @@ async def search_modules(query):
     now = datetime.now(timezone.utc)
 
     for repo in items:
-        # ❌ Skip forks
         if repo.get("fork"):
             continue
-
-        # ❌ Skip archived repos
         if repo.get("archived"):
             continue
-
-        # ❌ Skip very low star repos
         if repo.get("stargazers_count", 0) < 5:
             continue
 
-        # ✅ Check activity
         pushed_at = repo.get("pushed_at")
         if pushed_at:
             pushed_time = datetime.fromisoformat(
@@ -90,8 +80,8 @@ async def handler(event, args):
     if args and chat_id in SEARCH_CACHE and reply:
         me = await event.client.get_me()
         if reply.sender_id == me.id:
-            cmd = args[0]
 
+            cmd = args[0]
             if cmd.isdigit():
                 results = SEARCH_CACHE[chat_id]
                 index = int(cmd) - 1
@@ -103,20 +93,21 @@ async def handler(event, args):
 
                     await event.delete()
 
-                    loading = await respond(event, "`Fetching latest release...`")
+                    msg = await event.reply("Fetching latest release...")
 
                     release = await get_latest_release(owner, name)
                     assets = release.get("assets", [])
 
+                    await msg.delete()
+
                     if not assets:
-                        return await loading.edit("No release assets found.")
+                        return await respond(event, "No release assets found.")
 
                     text = f"**{name} - Latest Release**\n\n"
-
                     for asset in assets:
                         text += f"{asset['name']}\n{asset['browser_download_url']}\n\n"
 
-                    return await loading.edit(text)
+                    return await respond(event, text)
 
                 await event.delete()
                 return await respond(event, "Invalid selection.")
@@ -127,12 +118,14 @@ async def handler(event, args):
 
     query = " ".join(args)
 
-    loading = await respond(event, "`Searching repositories...`")
+    search_msg = await event.reply("Searching repositories...")
 
     results = await search_modules(query)
 
+    await search_msg.delete()
+
     if not results:
-        return await loading.edit("No active repositories found.")
+        return await respond(event, "No active repositories found.")
 
     SEARCH_CACHE[chat_id] = results
 
@@ -147,4 +140,4 @@ async def handler(event, args):
 
     text += "Reply with `.mrepo <number>` to get latest release."
 
-    await loading.edit(text)
+    await respond(event, text)
