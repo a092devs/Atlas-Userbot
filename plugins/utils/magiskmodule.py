@@ -6,7 +6,7 @@ from utils.respond import respond
 __plugin__ = {
     "name": "MagiskRepoSearcher",
     "category": "utils",
-    "description": "Search Magisk modules and get latest release link",
+    "description": "Search Magisk modules and get latest release links",
     "commands": {
         "mrepo": "Search Magisk modules",
     },
@@ -42,21 +42,17 @@ async def get_latest_release(owner, repo):
 
 async def handler(event, args):
     chat_id = event.chat_id
-    reply = await event.get_reply_message()
+    text_input = event.raw_text.strip().lower()
 
-    # 🔥 Handle reply navigation ONLY if replying to bot message
-    if reply and reply.sender_id == (await event.client.get_me()).id:
-        if chat_id not in SEARCH_CACHE:
-            return
-
-        reply_text = event.raw_text.strip().lower()
+    # 🔥 Handle navigation & selection (no reply required)
+    if chat_id in SEARCH_CACHE:
         cache = SEARCH_CACHE[chat_id]
+        results = cache["results"]
+        total_pages = (len(results) - 1) // RESULTS_PER_PAGE + 1
 
-        # Selection
-        if reply_text.isdigit():
-            index = int(reply_text) - 1
-            results = cache["results"]
-
+        # Selection by number
+        if text_input.isdigit():
+            index = int(text_input) - 1
             if 0 <= index < len(results):
                 repo = results[index]
                 owner = repo["owner"]["login"]
@@ -72,7 +68,6 @@ async def handler(event, args):
                     return await respond(event, "No release assets found.")
 
                 text = f"**{name} - Latest Release**\n\n"
-
                 for asset in assets:
                     text += f"{asset['name']}\n{asset['browser_download_url']}\n\n"
 
@@ -81,19 +76,17 @@ async def handler(event, args):
             await event.delete()
             return await respond(event, "Invalid selection.")
 
-        # Navigation only if multiple pages
-        total_pages = (len(cache["results"]) - 1) // RESULTS_PER_PAGE + 1
+        # Next page
+        if text_input == "n" and total_pages > 1:
+            cache["page"] = min(cache["page"] + 1, total_pages - 1)
+            await event.delete()
+            return await show_page(event, cache)
 
-        if total_pages > 1:
-            if reply_text == "n":
-                cache["page"] = min(cache["page"] + 1, total_pages - 1)
-                await event.delete()
-                return await show_page(event, cache)
-
-            if reply_text == "p":
-                cache["page"] = max(cache["page"] - 1, 0)
-                await event.delete()
-                return await show_page(event, cache)
+        # Previous page
+        if text_input == "p" and total_pages > 1:
+            cache["page"] = max(cache["page"] - 1, 0)
+            await event.delete()
+            return await show_page(event, cache)
 
     # 🔍 New search
     if not args:
@@ -108,10 +101,8 @@ async def handler(event, args):
     if "items" not in data or not data["items"]:
         return await respond(event, "No modules found.")
 
-    results = data["items"]
-
     SEARCH_CACHE[chat_id] = {
-        "results": results,
+        "results": data["items"],
         "page": 0,
     }
 
@@ -137,9 +128,9 @@ async def show_page(event, cache):
             f"{repo['html_url']}\n\n"
         )
 
-    text += "Reply with a number to get release link."
+    text += "Type a number to get release link."
 
     if total_pages > 1:
-        text += "\nReply `n` for next, `p` for previous."
+        text += "\nType `n` for next, `p` for previous."
 
     await respond(event, text)
