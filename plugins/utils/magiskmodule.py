@@ -76,12 +76,12 @@ async def handler(event, args):
     chat_id = event.chat_id
     reply = await event.get_reply_message()
 
-    # 🔥 Handle selection (must reply to bot message)
+    # 🔥 Selection (reply required)
     if args and chat_id in SEARCH_CACHE and reply:
         me = await event.client.get_me()
         if reply.sender_id == me.id:
-
             cmd = args[0]
+
             if cmd.isdigit():
                 results = SEARCH_CACHE[chat_id]
                 index = int(cmd) - 1
@@ -91,25 +91,19 @@ async def handler(event, args):
                     owner = repo["owner"]["login"]
                     name = repo["name"]
 
-                    await event.delete()
-
-                    msg = await event.reply("Fetching latest release...")
-
                     release = await get_latest_release(owner, name)
                     assets = release.get("assets", [])
-
-                    await msg.delete()
 
                     if not assets:
                         return await respond(event, "No release assets found.")
 
                     text = f"**{name} - Latest Release**\n\n"
+
                     for asset in assets:
                         text += f"{asset['name']}\n{asset['browser_download_url']}\n\n"
 
                     return await respond(event, text)
 
-                await event.delete()
                 return await respond(event, "Invalid selection.")
 
     # 🔍 New search
@@ -118,11 +112,7 @@ async def handler(event, args):
 
     query = " ".join(args)
 
-    search_msg = await event.reply("Searching repositories...")
-
     results = await search_modules(query)
-
-    await search_msg.delete()
 
     if not results:
         return await respond(event, "No active repositories found.")
