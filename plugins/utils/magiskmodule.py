@@ -44,54 +44,58 @@ async def handler(event, args):
     chat_id = event.chat_id
     reply = await event.get_reply_message()
 
-    # Handle reply navigation (n / p / number)
-    if reply and chat_id in SEARCH_CACHE:
+    # 🔥 Handle reply navigation ONLY if replying to bot message
+    if reply and reply.sender_id == (await event.client.get_me()).id:
+        if chat_id not in SEARCH_CACHE:
+            return
+
         reply_text = event.raw_text.strip().lower()
-
         cache = SEARCH_CACHE[chat_id]
-
-        # Next page
-        if reply_text == "n":
-            cache["page"] += 1
-            await event.delete()
-            return await show_page(event, cache)
-
-        # Previous page
-        if reply_text == "p":
-            cache["page"] = max(0, cache["page"] - 1)
-            await event.delete()
-            return await show_page(event, cache)
 
         # Selection
         if reply_text.isdigit():
             index = int(reply_text) - 1
             results = cache["results"]
 
-            if index < 0 or index >= len(results):
-                await event.delete()
-                return await respond(event, "Invalid selection.")
+            if 0 <= index < len(results):
+                repo = results[index]
+                owner = repo["owner"]["login"]
+                name = repo["name"]
 
-            repo = results[index]
-            owner = repo["owner"]["login"]
-            name = repo["name"]
+                await event.delete()
+                await respond(event, "`Fetching latest release...`")
+
+                release = await get_latest_release(owner, name)
+                assets = release.get("assets", [])
+
+                if not assets:
+                    return await respond(event, "No release assets found.")
+
+                text = f"**{name} - Latest Release**\n\n"
+
+                for asset in assets:
+                    text += f"{asset['name']}\n{asset['browser_download_url']}\n\n"
+
+                return await respond(event, text)
 
             await event.delete()
-            await respond(event, "`Fetching latest release...`")
+            return await respond(event, "Invalid selection.")
 
-            release = await get_latest_release(owner, name)
-            assets = release.get("assets", [])
+        # Navigation only if multiple pages
+        total_pages = (len(cache["results"]) - 1) // RESULTS_PER_PAGE + 1
 
-            if not assets:
-                return await respond(event, "No release assets found.")
+        if total_pages > 1:
+            if reply_text == "n":
+                cache["page"] = min(cache["page"] + 1, total_pages - 1)
+                await event.delete()
+                return await show_page(event, cache)
 
-            text = f"**{name} - Latest Release**\n\n"
+            if reply_text == "p":
+                cache["page"] = max(cache["page"] - 1, 0)
+                await event.delete()
+                return await show_page(event, cache)
 
-            for asset in assets:
-                text += f"{asset['name']}\n{asset['browser_download_url']}\n\n"
-
-            return await respond(event, text)
-
-    # New search
+    # 🔍 New search
     if not args:
         return await respond(event, "Usage:\n.mrepo <module name>")
 
@@ -120,12 +124,7 @@ async def show_page(event, cache):
 
     start = page * RESULTS_PER_PAGE
     end = start + RESULTS_PER_PAGE
-
     sliced = results[start:end]
-
-    if not sliced:
-        cache["page"] = max(0, page - 1)
-        return await respond(event, "No more results.")
 
     total_pages = (len(results) - 1) // RESULTS_PER_PAGE + 1
 
@@ -138,9 +137,9 @@ async def show_page(event, cache):
             f"{repo['html_url']}\n\n"
         )
 
-    text += "Reply with:\n"
-    text += "`n` → next page\n"
-    text += "`p` → previous page\n"
-    text += "`number` → get release link"
+    text += "Reply with a number to get release link."
+
+    if total_pages > 1:
+        text += "\nReply `n` for next, `p` for previous."
 
     await respond(event, text)
