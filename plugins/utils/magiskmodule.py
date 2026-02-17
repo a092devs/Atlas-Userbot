@@ -42,51 +42,55 @@ async def get_latest_release(owner, repo):
 
 async def handler(event, args):
     chat_id = event.chat_id
-    text_input = event.raw_text.strip().lower()
+    reply = await event.get_reply_message()
 
-    # 🔥 Handle navigation & selection (no reply required)
-    if chat_id in SEARCH_CACHE:
-        cache = SEARCH_CACHE[chat_id]
-        results = cache["results"]
-        total_pages = (len(results) - 1) // RESULTS_PER_PAGE + 1
+    # 🔥 Handle navigation & selection (must reply to bot message)
+    if args and chat_id in SEARCH_CACHE and reply:
+        me = await event.client.get_me()
+        if reply.sender_id == me.id:
+            cache = SEARCH_CACHE[chat_id]
+            results = cache["results"]
+            total_pages = (len(results) - 1) // RESULTS_PER_PAGE + 1
 
-        # Selection by number
-        if text_input.isdigit():
-            index = int(text_input) - 1
-            if 0 <= index < len(results):
-                repo = results[index]
-                owner = repo["owner"]["login"]
-                name = repo["name"]
+            cmd = args[0].lower()
+
+            # Selection
+            if cmd.isdigit():
+                index = int(cmd) - 1
+                if 0 <= index < len(results):
+                    repo = results[index]
+                    owner = repo["owner"]["login"]
+                    name = repo["name"]
+
+                    await event.delete()
+                    await respond(event, "`Fetching latest release...`")
+
+                    release = await get_latest_release(owner, name)
+                    assets = release.get("assets", [])
+
+                    if not assets:
+                        return await respond(event, "No release assets found.")
+
+                    text = f"**{name} - Latest Release**\n\n"
+                    for asset in assets:
+                        text += f"{asset['name']}\n{asset['browser_download_url']}\n\n"
+
+                    return await respond(event, text)
 
                 await event.delete()
-                await respond(event, "`Fetching latest release...`")
+                return await respond(event, "Invalid selection.")
 
-                release = await get_latest_release(owner, name)
-                assets = release.get("assets", [])
+            # Next page
+            if cmd == "n" and total_pages > 1:
+                cache["page"] = min(cache["page"] + 1, total_pages - 1)
+                await event.delete()
+                return await show_page(event, cache)
 
-                if not assets:
-                    return await respond(event, "No release assets found.")
-
-                text = f"**{name} - Latest Release**\n\n"
-                for asset in assets:
-                    text += f"{asset['name']}\n{asset['browser_download_url']}\n\n"
-
-                return await respond(event, text)
-
-            await event.delete()
-            return await respond(event, "Invalid selection.")
-
-        # Next page
-        if text_input == "n" and total_pages > 1:
-            cache["page"] = min(cache["page"] + 1, total_pages - 1)
-            await event.delete()
-            return await show_page(event, cache)
-
-        # Previous page
-        if text_input == "p" and total_pages > 1:
-            cache["page"] = max(cache["page"] - 1, 0)
-            await event.delete()
-            return await show_page(event, cache)
+            # Previous page
+            if cmd == "p" and total_pages > 1:
+                cache["page"] = max(cache["page"] - 1, 0)
+                await event.delete()
+                return await show_page(event, cache)
 
     # 🔍 New search
     if not args:
@@ -128,9 +132,11 @@ async def show_page(event, cache):
             f"{repo['html_url']}\n\n"
         )
 
-    text += "Type a number to get release link."
+    text += "Reply with:\n"
+    text += "`.mrepo <number>` → get release link\n"
 
     if total_pages > 1:
-        text += "\nType `n` for next, `p` for previous."
+        text += "`.mrepo n` → next page\n"
+        text += "`.mrepo p` → previous page"
 
     await respond(event, text)
