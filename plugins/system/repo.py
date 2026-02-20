@@ -24,8 +24,4 @@ async def handler(event, args):
         f"<a href='{REPO_URL}'>GitHub Repository</a>"
     )
 
-    await respond(
-        event,
-        text,
-        link_preview=False
-    )
+    await respond(event, text)
