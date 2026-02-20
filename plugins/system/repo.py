@@ -20,8 +20,8 @@ REPO_URL = "https://github.com/a092devs/Atlas-Userbot"
 
 async def handler(event, args):
     text = (
-        "<b>Atlas Userbot</b>\n\n"
-        f"<a href='{REPO_URL}'>GitHub Repository</a>"
+        "**Atlas Userbot**\n\n"
+        f"[GitHub Repository]({REPO_URL})"
     )
 
     await respond(event, text)
