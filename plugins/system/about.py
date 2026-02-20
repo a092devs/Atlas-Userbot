@@ -42,7 +42,7 @@ async def handler(event, args):
     python_version = sys.version.split()[0]
     os_info = platform.system()
 
-    plugin_count = len(dispatcher.commands)
+    plugin_count = len(set(dispatcher.commands.values()))
 
     text = (
         "Atlas Userbot\n\n"
