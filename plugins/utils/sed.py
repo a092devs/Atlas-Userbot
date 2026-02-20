@@ -1,17 +1,17 @@
 import re
 from utils.respond import respond
-from dispatcher import dispatcher  # dispatcher is in root
+from dispatcher import dispatcher
 
 
 __plugin__ = {
     "name": "SedRaw",
     "category": "utils",
-    "description": "Raw sed-style substitution using s/pattern/replacement/flags",
+    "description": "Raw sed-style substitution using s/pattern/replacement[/flags]",
     "commands": {},
 }
 
 
-# Detect: s<delimiter>
+# Detect beginning: s<delimiter>
 SED_REGEX = re.compile(r"^s(?P<delim>[^a-zA-Z0-9\s])")
 
 
@@ -20,17 +20,24 @@ async def raw_handler(event):
 
     match = SED_REGEX.match(raw)
     if not match:
-        return False  # not handled
+        return False  # Not a sed expression
 
     delim = match.group("delim")
+
+    # Split using detected delimiter
     parts = raw.split(delim)
 
-    if len(parts) < 4:
+    # Need at least: s delim pattern delim replacement
+    if len(parts) < 3:
         return False
 
     pattern = parts[1]
     replacement = parts[2]
-    flags = parts[3] if len(parts) > 3 else ""
+
+    # Flags are optional
+    flags = ""
+    if len(parts) > 3:
+        flags = parts[3]
 
     # Get target message
     reply = await event.get_reply_message()
@@ -75,6 +82,7 @@ async def raw_handler(event):
         await event.delete()
         return True
 
+    # Delete sed command message
     await event.delete()
 
     if result != target_text:
