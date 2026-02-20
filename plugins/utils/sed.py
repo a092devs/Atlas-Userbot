@@ -1,24 +1,16 @@
 import re
-
 from utils.respond import respond
 
 
 __plugin__ = {
-    "name": "SedSubstitution",
+    "name": "SedRaw",
     "category": "utils",
-    "description": (
-        "Advanced sed-style regex substitution.\n\n"
-        "Usage:\n"
-        "Reply or send:\n"
-        "`s/pattern/replacement/`\n"
-        "`s/pattern/replacement/g`\n"
-        "`s#pattern#replacement#gi`\n\n"
-        "Flags:\n"
-        "g → global\n"
-        "i → ignore case"
-    ),
-    "commands": {},  # raw trigger
+    "description": "Raw sed-style substitution using s/pattern/replacement/flags",
+    "commands": {},  # no command needed
 }
+
+
+SED_REGEX = re.compile(r"^s(?P<delim>[^a-zA-Z0-9\s])")
 
 
 async def get_target_message(event):
@@ -26,7 +18,6 @@ async def get_target_message(event):
     if reply and reply.text:
         return reply
 
-    # If not reply, fetch previous message
     async for msg in event.client.iter_messages(
         event.chat_id,
         limit=2
@@ -37,15 +28,14 @@ async def get_target_message(event):
     return None
 
 
-def parse_sed(text):
-    if not text.startswith("s"):
+def parse_sed(raw):
+    match = SED_REGEX.match(raw)
+    if not match:
         return None
 
-    delimiter = text[1]
-    if delimiter.isalnum():
-        return None
+    delim = match.group("delim")
 
-    parts = text.split(delimiter)
+    parts = raw.split(delim)
 
     if len(parts) < 4:
         return None
@@ -60,12 +50,10 @@ def parse_sed(text):
 async def handler(event, args):
     raw = event.raw_text.strip()
 
-    if not raw.startswith("s"):
-        return
-
+    # Only trigger if raw sed syntax
     parsed = parse_sed(raw)
     if not parsed:
-        return
+        return  # silently ignore
 
     pattern, replacement, flags = parsed
 
@@ -74,7 +62,6 @@ async def handler(event, args):
         return
 
     re_flags = re.MULTILINE
-
     if "i" in flags:
         re_flags |= re.IGNORECASE
 
@@ -83,13 +70,13 @@ async def handler(event, args):
             result = re.sub(pattern, replacement, target_msg.text, flags=re_flags)
         else:
             result = re.sub(pattern, replacement, target_msg.text, count=1, flags=re_flags)
-    except re.error as e:
-        await respond(event, f"Regex error:\n{e}")
-        return
+    except re.error:
+        return  # silently ignore regex errors
+
+    # Delete sed command message
+    await event.delete()
 
     if result == target_msg.text:
-        await event.delete()
         return
 
-    await event.delete()
     await respond(event, result)
