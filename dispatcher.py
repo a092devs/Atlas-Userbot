@@ -1,6 +1,7 @@
 from telethon.events import NewMessage
 import time
 import traceback
+import re
 
 from config import config
 from utils.logger import log_event
@@ -48,12 +49,17 @@ def _rate_limited(user_id: int) -> bool:
 class Dispatcher:
     def __init__(self):
         self.commands = {}
+        self.raw_handlers = []  # 🔥 NEW
 
     # ---------------------------------------------
     # Register commands
     # ---------------------------------------------
     def register(self, command: str, handler):
         self.commands[command.lower()] = handler
+
+    # 🔥 NEW: register raw handler (like sed)
+    def register_raw(self, handler):
+        self.raw_handlers.append(handler)
 
     # ---------------------------------------------
     # Bind clients
@@ -85,6 +91,18 @@ class Dispatcher:
             clear_afk()
             log_event("AFK", "I’m back online")
 
+        # 🔥 RAW HANDLERS FIRST
+        for handler in self.raw_handlers:
+            try:
+                handled = await handler(event)
+                if handled:
+                    return
+            except Exception:
+                log_event(
+                    "Raw Handler Error",
+                    traceback.format_exc(limit=6),
+                )
+
         await self._handle(event, ".")
 
     # ---------------------------------------------
@@ -94,13 +112,11 @@ class Dispatcher:
         if config.RUN_MODE == "user":
             return
 
-        # Assistant PMs (any user allowed)
         if event.is_private:
             if event.sender_id != config.OWNER_ID:
                 if _rate_limited(event.sender_id):
                     return
 
-            # Run assistant PM handlers (forward/reply)
             for handler in self.commands.values():
                 if getattr(handler, "_assistant_pm", False):
                     try:
@@ -111,13 +127,11 @@ class Dispatcher:
                             traceback.format_exc(limit=6),
                         )
 
-            # Owner can still issue commands
             if event.sender_id == config.OWNER_ID:
                 await self._handle(event, "/")
 
             return
 
-        # Non-PM assistant commands (owner only)
         if event.sender_id == config.OWNER_ID:
             await self._handle(event, "/")
 
