@@ -6,12 +6,6 @@ from utils.respond import respond
 from config import config
 from dispatcher import dispatcher
 
-try:
-    import telethon
-    TELETHON_VERSION = telethon.__version__
-except Exception:
-    TELETHON_VERSION = "Unknown"
-
 
 __plugin__ = {
     "name": "About",
@@ -27,7 +21,6 @@ __plugin__ = {
 }
 
 
-# Track start time when module loads
 START_TIME = time.time()
 
 REPO_URL = "https://github.com/a092devs/Atlas-Userbot"
@@ -52,15 +45,23 @@ async def handler(event, args):
     plugin_count = len(dispatcher.commands)
 
     text = (
-        "<b>Atlas Userbot</b>\n\n"
-        f"<b>Run Mode:</b> {config.RUN_MODE}\n"
-        f"<b>Owner ID:</b> {config.OWNER_ID}\n"
-        f"<b>Plugins Loaded:</b> {plugin_count}\n"
-        f"<b>Uptime:</b> {uptime}\n\n"
-        f"<b>Python:</b> {python_version}\n"
-        f"<b>Telethon:</b> {TELETHON_VERSION}\n"
-        f"<b>OS:</b> {os_info}\n\n"
-        f"<a href='{REPO_URL}'>Repository</a>"
+        "Atlas Userbot\n\n"
+        f"Run Mode: {config.RUN_MODE}\n"
+        f"Owner ID: {config.OWNER_ID}\n"
+        f"Plugins Loaded: {plugin_count}\n"
+        f"Uptime: {uptime}\n\n"
+        f"Python: {python_version}\n"
+        f"Telethon: {get_telethon_version()}\n"
+        f"OS: {os_info}\n\n"
+        f"Repository:\n{REPO_URL}"
     )
 
     await respond(event, text)
+
+
+def get_telethon_version():
+    try:
+        import telethon
+        return telethon.__version__
+    except Exception:
+        return "Unknown"
