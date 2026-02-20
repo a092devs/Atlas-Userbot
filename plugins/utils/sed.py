@@ -1,65 +1,55 @@
 import re
 from utils.respond import respond
+from dispatcher import dispatcher  # dispatcher is in root
 
 
 __plugin__ = {
     "name": "SedRaw",
     "category": "utils",
     "description": "Raw sed-style substitution using s/pattern/replacement/flags",
-    "commands": {},  # no command needed
+    "commands": {},
 }
 
 
+# Detect: s<delimiter>
 SED_REGEX = re.compile(r"^s(?P<delim>[^a-zA-Z0-9\s])")
 
 
-async def get_target_message(event):
-    reply = await event.get_reply_message()
-    if reply and reply.text:
-        return reply
+async def raw_handler(event):
+    raw = (event.raw_text or "").strip()
 
-    async for msg in event.client.iter_messages(
-        event.chat_id,
-        limit=2
-    ):
-        if msg.id != event.id and msg.text:
-            return msg
-
-    return None
-
-
-def parse_sed(raw):
     match = SED_REGEX.match(raw)
     if not match:
-        return None
+        return False  # not handled
 
     delim = match.group("delim")
-
     parts = raw.split(delim)
 
     if len(parts) < 4:
-        return None
+        return False
 
     pattern = parts[1]
     replacement = parts[2]
     flags = parts[3] if len(parts) > 3 else ""
 
-    return pattern, replacement, flags
+    # Get target message
+    reply = await event.get_reply_message()
 
+    if reply and reply.text:
+        target_text = reply.text
+    else:
+        target_text = None
+        async for msg in event.client.iter_messages(
+            event.chat_id,
+            limit=2
+        ):
+            if msg.id != event.id and msg.text:
+                target_text = msg.text
+                break
 
-async def handler(event, args):
-    raw = event.raw_text.strip()
-
-    # Only trigger if raw sed syntax
-    parsed = parse_sed(raw)
-    if not parsed:
-        return  # silently ignore
-
-    pattern, replacement, flags = parsed
-
-    target_msg = await get_target_message(event)
-    if not target_msg:
-        return
+        if not target_text:
+            await event.delete()
+            return True
 
     re_flags = re.MULTILINE
     if "i" in flags:
@@ -67,16 +57,31 @@ async def handler(event, args):
 
     try:
         if "g" in flags:
-            result = re.sub(pattern, replacement, target_msg.text, flags=re_flags)
+            result = re.sub(
+                pattern,
+                replacement,
+                target_text,
+                flags=re_flags
+            )
         else:
-            result = re.sub(pattern, replacement, target_msg.text, count=1, flags=re_flags)
+            result = re.sub(
+                pattern,
+                replacement,
+                target_text,
+                count=1,
+                flags=re_flags
+            )
     except re.error:
-        return  # silently ignore regex errors
+        await event.delete()
+        return True
 
-    # Delete sed command message
     await event.delete()
 
-    if result == target_msg.text:
-        return
+    if result != target_text:
+        await respond(event, result)
 
-    await respond(event, result)
+    return True  # handled
+
+
+# Register raw handler
+dispatcher.register_raw(raw_handler)
