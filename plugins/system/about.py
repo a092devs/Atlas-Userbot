@@ -3,7 +3,6 @@ import time
 import platform
 
 from utils.respond import respond
-from config import config
 from dispatcher import dispatcher
 
 
@@ -23,6 +22,7 @@ __plugin__ = {
 
 START_TIME = time.time()
 REPO_URL = "https://github.com/a092devs/Atlas-Userbot"
+OWNER_USERNAME = "https://t.me/a092devs"
 
 
 def format_uptime():
@@ -52,8 +52,7 @@ async def handler(event, args):
 
     text = (
         "**System Information**\n\n"
-        f"**Run Mode:** `{config.RUN_MODE}`\n"
-        f"**Owner ID:** `{config.OWNER_ID}`\n"
+        f"**Owner:** [@a092devs]({OWNER_USERNAME})\n"
         f"**Plugins Loaded:** `{plugin_count}`\n"
         f"**Uptime:** `{uptime}`\n\n"
         f"**Python:** `{python_version}`\n"
