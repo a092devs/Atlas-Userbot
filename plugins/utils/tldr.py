@@ -12,16 +12,17 @@ __plugin__ = {
     "category": "utils",
     "description": (
         "Summarize text, files, or web links using Gemini AI.\n\n"
-        "Usage Examples:\n"
-        ".tldr 5 points\n"
-        ".tldr 3 para\n"
-        ".tldr 120 words\n"
-        ".tldr 6 sentences\n"
-        ".tldr https://example.com\n\n"
-        "Reply to a message or .txt/.log file to summarize it.\n\n"
-        "Optional Gemini AI Setup:\n"
-        ".setapi GEMINI_API_KEY <your_api_key>\n\n"
-        "If no API key is set, a local summarizer will be used."
+        "Usage:\n"
+        "` .tldr 5 points `\n"
+        "` .tldr 3 para `\n"
+        "` .tldr 120 words `\n"
+        "` .tldr 6 sentences `\n"
+        "` .tldr https://example.com `\n\n"
+        "Reply to a message or a `.txt/.log` file to summarize.\n\n"
+        "Optional Gemini Setup:\n"
+        "Set API key using:\n"
+        "` .setapi GEMINI_API_KEY <your_api_key> `\n\n"
+        "If no API key is set, a local summarizer is used."
     ),
     "commands": {
         "tldr": "Summarize text, files, or web links",
@@ -35,9 +36,9 @@ GEMINI_URL = (
 )
 
 
-# ----------------------------------
-# Extract article text from URL
-# ----------------------------------
+# ----------------------------
+# Extract article text
+# ----------------------------
 async def fetch_url_text(url):
     headers = {"User-Agent": "Mozilla/5.0"}
 
@@ -56,14 +57,15 @@ async def fetch_url_text(url):
     return re.sub(r"\s+", " ", text).strip()
 
 
-# ----------------------------------
-# Parse user instruction
-# ----------------------------------
+# ----------------------------
+# Parse instruction
+# ----------------------------
 def parse_instruction(args):
     text = " ".join(args).lower()
 
     match = re.search(
-        r"(\d+)\s*(points|para|paragraphs|words|sentences)", text
+        r"(\d+)\s*(points|para|paragraphs|words|sentences)",
+        text,
     )
 
     if match:
@@ -82,13 +84,15 @@ def parse_instruction(args):
     return "Summarize in 5 concise bullet points."
 
 
-# ----------------------------------
-# Local Extractive Summarizer
-# ----------------------------------
+# ----------------------------
+# Local summarizer
+# ----------------------------
 def local_summarize(text, sentence_count=5):
     sentences = re.split(r'(?<=[.!?]) +', text)
+
+    # If too short, still reduce it slightly
     if len(sentences) <= sentence_count:
-        return text
+        return " ".join(sentences[:sentence_count])
 
     words = re.findall(r"\w+", text.lower())
     freq = Counter(words)
@@ -110,9 +114,9 @@ def local_summarize(text, sentence_count=5):
     return " ".join(top_sentences)
 
 
-# ----------------------------------
-# Gemini Summarizer
-# ----------------------------------
+# ----------------------------
+# Gemini summarizer
+# ----------------------------
 async def gemini_summarize(api_key, instruction, content):
     payload = {
         "contents": [{
@@ -136,20 +140,20 @@ async def gemini_summarize(api_key, instruction, content):
         return None
 
 
-# ----------------------------------
-# Main Handler
-# ----------------------------------
+# ----------------------------
+# Main handler
+# ----------------------------
 async def handler(event, args):
     reply = await event.get_reply_message()
     instruction = parse_instruction(args)
 
     content = None
 
-    # Reply to text
+    # 1️⃣ Priority: reply text
     if reply and reply.text:
         content = reply.text
 
-    # Reply to file
+    # 2️⃣ Reply file
     elif reply and reply.document:
         file_path = await reply.download_media()
         try:
@@ -163,32 +167,39 @@ async def handler(event, args):
         except Exception:
             content = None
 
-    # Direct URL
+    # 3️⃣ Direct URL
     elif args:
-        last_arg = args[-1]
-        if last_arg.startswith("http"):
-            content = await fetch_url_text(last_arg)
+        for arg in args:
+            if arg.startswith("http"):
+                content = await fetch_url_text(arg)
+                break
 
-    # Direct inline text
+    # 4️⃣ Inline text (only if not reply)
     if not content and args:
         content = " ".join(args)
 
     if not content:
         return await respond(event, "No content to summarize.")
 
-    # Trim extremely large text (Gemini safe limit)
-    content = content[:20000]
+    content = content.strip()
+    content = content[:20000]  # safety limit
 
     api_key = get_key(REQUIRED_KEY)
 
-    # Try Gemini first
+    # Try Gemini
     if api_key:
         summary = await gemini_summarize(
-            api_key, instruction, content
+            api_key,
+            instruction,
+            content
         )
-        if summary:
+        if summary and summary.strip() != content.strip():
             return await respond(event, summary)
 
-    # Fallback to local summarizer
-    fallback = local_summarize(content, 5)
-    return await respond(event, fallback)
+    # Fallback
+    summary = local_summarize(content, 5)
+
+    if summary.strip() == content.strip():
+        summary = summary[:1000]  # force reduction
+
+    return await respond(event, summary)
