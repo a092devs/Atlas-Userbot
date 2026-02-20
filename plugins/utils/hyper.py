@@ -44,16 +44,16 @@ def parse_firmware(html):
 
     results = {}
 
-    cards = soup.find_all("div", class_="firmware")
+    cards = soup.find_all("div", class_="card")
 
     for card in cards:
-        title = card.find("h5")
-        if not title:
+        header = card.find("h5")
+        if not header:
             continue
 
-        title_text = title.get_text(strip=True)
+        title_text = header.get_text(strip=True)
 
-        # Detect region from title
+        # Detect region
         region_code = None
         for code in REGION_MAP:
             if code in title_text:
@@ -65,20 +65,20 @@ def parse_firmware(html):
 
         region_name = REGION_MAP.get(region_code, region_code)
 
-        links = card.find_all("a")
+        if region_name not in results:
+            results[region_name] = {
+                "Recovery": None,
+                "Fastboot": None,
+            }
 
-        for link in links:
-            href = link.get("href")
-            text = link.get_text(strip=True)
+        buttons = card.find_all("a", class_="btn")
+
+        for btn in buttons:
+            href = btn.get("href")
+            text = btn.get_text(strip=True)
 
             if not href:
                 continue
-
-            if region_name not in results:
-                results[region_name] = {
-                    "Recovery": None,
-                    "Fastboot": None,
-                }
 
             if "Recovery" in text:
                 results[region_name]["Recovery"] = href
