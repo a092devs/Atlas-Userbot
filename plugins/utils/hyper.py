@@ -7,32 +7,34 @@ from utils.respond import respond
 __plugin__ = {
     "name": "XiaomiFirmware",
     "category": "utils",
-    "description": "Fetch latest MIUI/HyperOS firmware (Recovery + Fastboot) from Xiaomi Firmware Updater",
+    "description": (
+        "Fetch latest MIUI / HyperOS firmware from Xiaomi Firmware Updater\n\n"
+        "Usage:\n"
+        ".hyper <device_codename>\n\n"
+        "Example:\n"
+        ".hyper sweet"
+    ),
     "commands": {
-        "hyper": "Get Xiaomi firmware info",
+        "hyper": "Get Xiaomi firmware (Recovery + Fastboot)",
     },
 }
 
 
 BASE_URL = "https://xmfirmwareupdater.com/firmware/{codename}/"
 
-
-REGION_MAP = {
-    "MI": "Global",
-    "EU": "EEA",
-    "IN": "India",
-    "CN": "China",
-    "RU": "Russia",
-    "TR": "Turkey",
-    "ID": "Indonesia",
-    "TW": "Taiwan",
+HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Linux; Android 13; Pixel 7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Mobile Safari/537.36"
+    )
 }
 
 
 async def fetch_firmware_page(codename):
     url = BASE_URL.format(codename=codename.lower())
 
-    async with aiohttp.ClientSession() as session:
+    async with aiohttp.ClientSession(headers=HEADERS) as session:
         async with session.get(url) as resp:
             if resp.status != 200:
                 return None
@@ -44,46 +46,61 @@ def parse_firmware(html):
 
     results = {}
 
-    cards = soup.find_all("div", class_="card")
+    # Each firmware entry is inside article.card (current structure)
+    cards = soup.find_all("article")
 
     for card in cards:
-        header = card.find("h5")
-        if not header:
+        title_tag = card.find("h2")
+        if not title_tag:
             continue
 
-        title_text = header.get_text(strip=True)
+        title = title_tag.get_text(strip=True)
 
-        # Detect region
-        region_code = None
-        for code in REGION_MAP:
-            if code in title_text:
-                region_code = code
-                break
+        # Extract region from title
+        # Example title:
+        # "Xiaomi Redmi Note 10 Pro (sweet) Global Recovery"
+        region = None
 
-        if not region_code:
+        if "Global" in title:
+            region = "Global"
+        elif "India" in title:
+            region = "India"
+        elif "EEA" in title:
+            region = "EEA"
+        elif "China" in title:
+            region = "China"
+        elif "Russia" in title:
+            region = "Russia"
+        elif "Turkey" in title:
+            region = "Turkey"
+        elif "Indonesia" in title:
+            region = "Indonesia"
+        elif "Taiwan" in title:
+            region = "Taiwan"
+
+        if not region:
             continue
 
-        region_name = REGION_MAP.get(region_code, region_code)
-
-        if region_name not in results:
-            results[region_name] = {
+        if region not in results:
+            results[region] = {
                 "Recovery": None,
                 "Fastboot": None,
             }
 
-        buttons = card.find_all("a", class_="btn")
+        # Find download links
+        links = card.find_all("a")
 
-        for btn in buttons:
-            href = btn.get("href")
-            text = btn.get_text(strip=True)
+        for link in links:
+            href = link.get("href")
+            text = link.get_text(strip=True)
 
             if not href:
                 continue
 
             if "Recovery" in text:
-                results[region_name]["Recovery"] = href
+                results[region]["Recovery"] = href
             elif "Fastboot" in text:
-                results[region_name]["Fastboot"] = href
+                results[region]["Fastboot"] = href
 
     return results
 
@@ -92,7 +109,7 @@ async def handler(event, args):
     if not args:
         return await respond(event, "Usage:\n.hyper <device_codename>")
 
-    codename = args[0]
+    codename = args[0].lower()
 
     html = await fetch_firmware_page(codename)
 
