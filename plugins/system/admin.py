@@ -16,7 +16,7 @@ __plugin__ = {
         "kick": "Kick a user from the chat",
         "mute": "Mute a user",
         "unmute": "Unmute a user",
-        "purge": "Bulk delete messages with filters",
+        "purge": "Delete messages in bulk",
         "del": "Delete a single replied message",
     },
 }
@@ -55,90 +55,33 @@ async def handler(event, args):
         # -------------------------------------------------
         if cmd == "purge":
 
-            msgs = []
-
-            # purge N messages
+            # .purge 50
             if args and args[0].isdigit():
                 limit = int(args[0])
 
+                msgs = []
                 async for msg in event.client.iter_messages(
                     event.chat_id,
                     limit=limit
                 ):
                     msgs.append(msg.id)
 
-            # purge bots
-            elif args and args[0] == "bots":
-                async for msg in event.client.iter_messages(event.chat_id):
-                    if msg.sender and msg.sender.bot:
-                        msgs.append(msg.id)
+                if msgs:
+                    await event.client.delete_messages(event.chat_id, msgs)
 
-            # purge links
-            elif args and args[0] == "links":
-                async for msg in event.client.iter_messages(event.chat_id):
-                    if msg.text and ("http://" in msg.text or "https://" in msg.text):
-                        msgs.append(msg.id)
+                return await respond(event, f"Purged `{len(msgs)}` messages.")
 
-            # purge own messages
-            elif args and args[0] == "me":
-                async for msg in event.client.iter_messages(event.chat_id):
-                    if msg.sender_id == event.sender_id:
-                        msgs.append(msg.id)
+            # .purge (reply)
+            if not reply:
+                return await respond(event, "Reply to a message to start purging.")
 
-            # purge user (reply)
-            elif args and args[0] == "user":
-                if not reply:
-                    return await respond(event, "Reply to a user to purge their messages.")
-
-                user_id = reply.sender_id
-
-                async for msg in event.client.iter_messages(event.chat_id):
-                    if msg.sender_id == user_id:
-                        msgs.append(msg.id)
-
-            # purge media
-            elif args and args[0] == "media":
-                async for msg in event.client.iter_messages(event.chat_id):
-                    if msg.media:
-                        msgs.append(msg.id)
-
-            # purge photos
-            elif args and args[0] == "photos":
-                async for msg in event.client.iter_messages(event.chat_id):
-                    if msg.photo:
-                        msgs.append(msg.id)
-
-            # purge gifs
-            elif args and args[0] == "gifs":
-                async for msg in event.client.iter_messages(event.chat_id):
-                    if msg.gif:
-                        msgs.append(msg.id)
-
-            # purge stickers
-            elif args and args[0] == "stickers":
-                async for msg in event.client.iter_messages(event.chat_id):
-                    if msg.sticker:
-                        msgs.append(msg.id)
-
-            # purge from username
-            elif args and args[0] == "from" and len(args) > 1:
-                entity = await event.client.get_entity(args[1])
-
-                async for msg in event.client.iter_messages(event.chat_id):
-                    if msg.sender_id == entity.id:
-                        msgs.append(msg.id)
-
-            # purge range (reply based)
-            else:
-                if not reply:
-                    return await respond(event, "Reply to a message to start purging.")
-
-                async for msg in event.client.iter_messages(
-                    event.chat_id,
-                    min_id=reply.id,
-                    max_id=event.id
-                ):
-                    msgs.append(msg.id)
+            msgs = []
+            async for msg in event.client.iter_messages(
+                event.chat_id,
+                min_id=reply.id,
+                max_id=event.id
+            ):
+                msgs.append(msg.id)
 
             if msgs:
                 await event.client.delete_messages(event.chat_id, msgs)
