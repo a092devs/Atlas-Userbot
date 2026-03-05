@@ -14,9 +14,9 @@ __plugin__ = {
         "ban": "Ban a user from the chat",
         "unban": "Remove ban from a user",
         "kick": "Kick a user from the chat",
-        "mute": "Mute a user (cannot send messages)",
+        "mute": "Mute a user",
         "unmute": "Unmute a user",
-        "purge": "Bulk delete messages",
+        "purge": "Bulk delete messages with filters",
         "del": "Delete a single replied message",
     },
 }
@@ -26,23 +26,6 @@ BAN_RIGHTS = ChatBannedRights(until_date=None, view_messages=True)
 UNBAN_RIGHTS = ChatBannedRights(until_date=None, view_messages=False)
 MUTE_RIGHTS = ChatBannedRights(until_date=None, send_messages=True)
 UNMUTE_RIGHTS = ChatBannedRights(until_date=None, send_messages=False)
-
-
-PURGE_HELP = (
-    "Purge command usage:\n\n"
-    ".purge\n"
-    "Reply to a message to purge everything after it.\n\n"
-    ".purge 50\n"
-    "Delete last 50 messages.\n\n"
-    ".purge user\n"
-    "Reply to a user and purge their messages.\n\n"
-    ".purge bots\n"
-    "Delete bot messages.\n\n"
-    ".purge links\n"
-    "Delete messages containing links.\n\n"
-    ".purge me\n"
-    "Delete your own messages."
-)
 
 
 async def handler(event, args):
@@ -71,10 +54,6 @@ async def handler(event, args):
         # PURGE
         # -------------------------------------------------
         if cmd == "purge":
-
-            # Help
-            if args and args[0] == "help":
-                return await respond(event, PURGE_HELP)
 
             msgs = []
 
@@ -106,7 +85,7 @@ async def handler(event, args):
                     if msg.sender_id == event.sender_id:
                         msgs.append(msg.id)
 
-            # purge user messages
+            # purge user (reply)
             elif args and args[0] == "user":
                 if not reply:
                     return await respond(event, "Reply to a user to purge their messages.")
@@ -117,7 +96,39 @@ async def handler(event, args):
                     if msg.sender_id == user_id:
                         msgs.append(msg.id)
 
-            # purge range
+            # purge media
+            elif args and args[0] == "media":
+                async for msg in event.client.iter_messages(event.chat_id):
+                    if msg.media:
+                        msgs.append(msg.id)
+
+            # purge photos
+            elif args and args[0] == "photos":
+                async for msg in event.client.iter_messages(event.chat_id):
+                    if msg.photo:
+                        msgs.append(msg.id)
+
+            # purge gifs
+            elif args and args[0] == "gifs":
+                async for msg in event.client.iter_messages(event.chat_id):
+                    if msg.gif:
+                        msgs.append(msg.id)
+
+            # purge stickers
+            elif args and args[0] == "stickers":
+                async for msg in event.client.iter_messages(event.chat_id):
+                    if msg.sticker:
+                        msgs.append(msg.id)
+
+            # purge from username
+            elif args and args[0] == "from" and len(args) > 1:
+                entity = await event.client.get_entity(args[1])
+
+                async for msg in event.client.iter_messages(event.chat_id):
+                    if msg.sender_id == entity.id:
+                        msgs.append(msg.id)
+
+            # purge range (reply based)
             else:
                 if not reply:
                     return await respond(event, "Reply to a message to start purging.")
