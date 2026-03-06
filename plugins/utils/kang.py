@@ -54,7 +54,7 @@ async def handler(event, args):
     if pack:
         pack_name = f"{username}_{pack}"
 
-    file = await event.client.download_media(reply.sticker)
+    sticker_document = reply.document
 
     try:
         await event.client(
@@ -65,6 +65,7 @@ async def handler(event, args):
         )
 
     except Exception:
+
         await event.client(
             CreateStickerSetRequest(
                 user_id=me.id,
@@ -72,7 +73,7 @@ async def handler(event, args):
                 short_name=pack_name,
                 stickers=[
                     InputStickerSetItem(
-                        document=await event.client.upload_file(file),
+                        document=sticker_document,
                         emoji=emoji
                     )
                 ]
@@ -82,11 +83,12 @@ async def handler(event, args):
         return await respond(event, "Sticker pack created and sticker added.")
 
     try:
+
         await event.client(
             AddStickerToSetRequest(
                 stickerset=InputStickerSetShortName(pack_name),
                 sticker=InputStickerSetItem(
-                    document=await event.client.upload_file(file),
+                    document=sticker_document,
                     emoji=emoji
                 )
             )
