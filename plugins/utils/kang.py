@@ -31,7 +31,7 @@ DEFAULT_EMOJI = "🙂"
 PACK_LIMIT = 120
 
 
-def convert_to_webp(path):
+def convert_photo(path):
     img = Image.open(path).convert("RGBA")
     img.thumbnail((512, 512))
 
@@ -109,13 +109,20 @@ async def handler(event, args):
             except Exception:
                 break
 
-    file_path = await event.client.download_media(reply)
+    ext = reply.file.ext or ""
 
-    file_path = convert_to_webp(file_path)
+    if ext in [".tgs", ".webm"]:
+        file_path = await event.client.download_media(reply)
+    else:
+        file_path = await event.client.download_media(reply)
+
+        if ext not in [".webp"]:
+            file_path = convert_photo(file_path)
 
     uploaded = await event.client.upload_file(file_path)
 
-    os.remove(file_path)
+    if os.path.exists(file_path):
+        os.remove(file_path)
 
     try:
 
