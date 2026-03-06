@@ -47,6 +47,15 @@ def convert_photo(path):
     return out
 
 
+async def ensure_sticker_ready(client):
+    async with client.conversation("@Stickers", timeout=10) as conv:
+        await conv.send_message("/cancel")
+        try:
+            await conv.get_response()
+        except Exception:
+            pass
+
+
 async def handler(event, args):
 
     cmd = event.raw_text.split()[0].lstrip("./")
@@ -145,6 +154,8 @@ async def handler(event, args):
         await respond(event, f"Sticker added\nhttps://t.me/addstickers/{pack_name}")
 
     except Exception:
+
+        await ensure_sticker_ready(event.client)
 
         await event.client(
             CreateStickerSetRequest(
