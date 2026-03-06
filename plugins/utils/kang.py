@@ -1,5 +1,5 @@
 import os
-from PIL import Image
+import PIL.Image as Image
 
 from telethon.tl.functions.messages import GetStickerSetRequest
 from telethon.tl.functions.stickers import CreateStickerSetRequest, AddStickerToSetRequest
@@ -79,27 +79,10 @@ async def handler(event, args):
     me = await event.client.get_me()
     username = me.username or str(me.id)
 
-    animated = False
-    videos = False
-
-    if reply.sticker:
-        ext = reply.file.ext or ""
-
-        if ext == ".tgs":
-            animated = True
-        elif ext == ".webm":
-            videos = True
-
-    suffix = ""
-    if animated:
-        suffix = "_anim"
-    elif videos:
-        suffix = "_video"
-
-    base_pack = f"{username}_kang_pack{suffix}"
+    base_pack = f"{username}_kang_pack"
 
     if custom_pack:
-        base_pack = f"{username}_{custom_pack}{suffix}"
+        base_pack = f"{username}_{custom_pack}"
 
     pack_name = base_pack if not forced_pack else f"{base_pack}_{forced_pack}"
 
@@ -173,9 +156,7 @@ async def handler(event, args):
                         document=uploaded,
                         emoji=emoji
                     )
-                ],
-                animated=animated,
-                videos=videos
+                ]
             )
         )
 
