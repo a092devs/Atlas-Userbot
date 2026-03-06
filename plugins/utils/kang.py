@@ -49,12 +49,7 @@ def convert_to_webp(path):
 
     out = path + ".webp"
 
-    canvas.save(
-        out,
-        "WEBP",
-        lossless=True,
-        method=6
-    )
+    canvas.save(out, "WEBP", lossless=True, method=6)
 
     return out
 
@@ -123,6 +118,43 @@ def increment(owner, key):
     save_db(data)
 
 
+async def api_kang(client, me, short, emoji, sticker):
+
+    uploaded = await client.upload_file(sticker)
+
+    item = InputStickerSetItem(
+        document=uploaded,
+        emoji=emoji
+    )
+
+    try:
+
+        await client(
+            GetStickerSetRequest(
+                stickerset=InputStickerSetShortName(short),
+                hash=0
+            )
+        )
+
+        await client(
+            AddStickerToSetRequest(
+                stickerset=InputStickerSetShortName(short),
+                sticker=item
+            )
+        )
+
+    except StickersetInvalidError:
+
+        await client(
+            CreateStickerSetRequest(
+                user_id=me.id,
+                title=f"{me.username} Kang Pack",
+                short_name=short,
+                stickers=[item]
+            )
+        )
+
+
 async def handler(event, args):
 
     reply = await event.get_reply_message()
@@ -157,53 +189,68 @@ async def handler(event, args):
 
     short = pack["short"]
 
-    tmp_file = None
-    sticker_file = None
+    tmp = None
+    sticker = None
 
     try:
 
-        tmp_file = await event.client.download_media(reply)
+        tmp = await event.client.download_media(reply)
 
-        ext = os.path.splitext(tmp_file)[1].lower()
+        ext = os.path.splitext(tmp)[1].lower()
 
-        if ext in [".tgs", ".webm", ".webp"]:
-            sticker_file = tmp_file
+        if ext == ".webp":
+
+            sticker = tmp
+            await api_kang(event.client, me, short, emoji, sticker)
+
+        elif ext in [".tgs", ".webm"]:
+
+            async with event.client.conversation("Stickers", timeout=120) as conv:
+
+                await conv.send_message("/addsticker")
+                await conv.get_response()
+
+                await conv.send_message(short)
+                r = await conv.get_response()
+
+                if "invalid" in r.text.lower():
+
+                    await conv.send_message("/newpack")
+                    await conv.get_response()
+
+                    await conv.send_message(f"{username} Kang Pack")
+                    await conv.get_response()
+
+                    await conv.send_file(tmp, force_document=True)
+                    await conv.get_response()
+
+                    await conv.send_message(emoji)
+                    await conv.get_response()
+
+                    await conv.send_message("/publish")
+                    await conv.get_response()
+
+                    await conv.send_message(short)
+                    await conv.get_response()
+
+                    await conv.send_message("/skip")
+                    await conv.get_response()
+
+                else:
+
+                    await conv.send_file(tmp, force_document=True)
+                    await conv.get_response()
+
+                    await conv.send_message(emoji)
+                    await conv.get_response()
+
+                    await conv.send_message("/done")
+                    await conv.get_response()
+
         else:
-            sticker_file = convert_to_webp(tmp_file)
 
-        uploaded = await event.client.upload_file(sticker_file)
-
-        sticker_item = InputStickerSetItem(
-            document=uploaded,
-            emoji=emoji
-        )
-
-        try:
-
-            await event.client(
-                GetStickerSetRequest(
-                    stickerset=InputStickerSetShortName(short),
-                    hash=0
-                )
-            )
-
-            await event.client(
-                AddStickerToSetRequest(
-                    stickerset=InputStickerSetShortName(short),
-                    sticker=sticker_item
-                )
-            )
-
-        except StickersetInvalidError:
-
-            await event.client(
-                CreateStickerSetRequest(
-                    user_id=me.id,
-                    title=f"{username} Kang Pack",
-                    short_name=short,
-                    stickers=[sticker_item]
-                )
-            )
+            sticker = convert_to_webp(tmp)
+            await api_kang(event.client, me, short, emoji, sticker)
 
         increment(owner, pack_key)
 
@@ -218,7 +265,7 @@ async def handler(event, args):
 
     finally:
 
-        for f in [tmp_file, sticker_file]:
+        for f in [tmp, sticker]:
             try:
                 if f and os.path.exists(f):
                     os.remove(f)
