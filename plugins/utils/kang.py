@@ -1,9 +1,22 @@
 import os
-import json
 import re
+import json
+import tempfile
+
 from PIL import Image
 
-from telethon.errors import YouBlockedUserError
+from telethon.errors import StickersetInvalidError
+from telethon.tl.types import (
+    InputStickerSetShortName,
+    InputStickerSetItem
+)
+
+from telethon.tl.functions.stickers import (
+    CreateStickerSetRequest,
+    AddStickerToSetRequest
+)
+
+from telethon.tl.functions.messages import GetStickerSetRequest
 
 from utils.respond import respond
 from db.core import db
@@ -12,16 +25,9 @@ from db.core import db
 __plugin__ = {
     "name": "Kang",
     "category": "utils",
-    "description": (
-        "Steal stickers and add them to your sticker packs.\n\n"
-        "Usage:\n"
-        "` .kang `\n"
-        "` .kang <emoji>`\n"
-        "` .kang <packname>`\n"
-        "` .kang <emoji> <packname>`"
-    ),
+    "description": "Steal stickers and add them to your sticker packs.",
     "commands": {
-        "kang": "Add replied sticker to your pack",
+        "kang": "Add replied sticker to your pack"
     },
 }
 
@@ -31,27 +37,17 @@ PACK_LIMIT = 120
 DB_KEY = "kang_packs"
 
 
-# ---------------------------
-# Helpers
-# ---------------------------
+# ------------------------------------------------
+# Emoji detection
+# ------------------------------------------------
 
 def is_emoji(s):
     return bool(re.match(r"[\U00010000-\U0010ffff]", s))
 
 
-def convert_to_webp(path):
-
-    img = Image.open(path).convert("RGBA")
-    img.thumbnail((512, 512))
-
-    canvas = Image.new("RGBA", (512, 512), (0, 0, 0, 0))
-    canvas.paste(img, ((512-img.width)//2, (512-img.height)//2))
-
-    out = path + ".webp"
-    canvas.save(out, "WEBP")
-
-    return out
-
+# ------------------------------------------------
+# DB helpers
+# ------------------------------------------------
 
 def load_db():
 
@@ -96,6 +92,7 @@ def get_pack(owner, key, username):
 def rotate_pack(owner, key, username):
 
     data = load_db()
+
     pack = data[owner][key]
 
     if pack["count"] >= PACK_LIMIT:
@@ -116,9 +113,27 @@ def increment(owner, key):
     save_db(data)
 
 
-# ---------------------------
-# Main Handler
-# ---------------------------
+# ------------------------------------------------
+# Image conversion
+# ------------------------------------------------
+
+def convert_to_webp(path):
+
+    img = Image.open(path).convert("RGBA")
+    img.thumbnail((512, 512))
+
+    canvas = Image.new("RGBA", (512, 512), (0, 0, 0, 0))
+    canvas.paste(img, ((512-img.width)//2, (512-img.height)//2))
+
+    out = path + ".webp"
+    canvas.save(out, "WEBP")
+
+    return out
+
+
+# ------------------------------------------------
+# Main handler
+# ------------------------------------------------
 
 async def handler(event, args):
 
@@ -154,76 +169,53 @@ async def handler(event, args):
 
     short = pack["short"]
 
-    file_path = None
-    sticker = None
+    tmp_file = None
+    sticker_file = None
 
     try:
 
-        file_path = await event.client.download_media(reply)
+        tmp_file = await event.client.download_media(reply)
 
-        ext = os.path.splitext(file_path)[1].lower()
+        ext = os.path.splitext(tmp_file)[1].lower()
 
         if ext in [".tgs", ".webm", ".webp"]:
-            sticker = file_path
+            sticker_file = tmp_file
         else:
-            sticker = convert_to_webp(file_path)
+            sticker_file = convert_to_webp(tmp_file)
 
-        async with event.client.conversation("Stickers", timeout=120) as conv:
+        uploaded = await event.client.upload_file(sticker_file)
 
-            await conv.send_message("/addsticker")
+        sticker_item = InputStickerSetItem(
+            document=uploaded,
+            emoji=emoji
+        )
 
-            r = await conv.get_response()
+        try:
 
-            if "choose" not in r.text.lower():
-                raise Exception("Unexpected response from @stickers")
+            await event.client(
+                GetStickerSetRequest(
+                    stickerset=InputStickerSetShortName(short),
+                    hash=0
+                )
+            )
 
-            await conv.send_message(short)
+            await event.client(
+                AddStickerToSetRequest(
+                    stickerset=InputStickerSetShortName(short),
+                    sticker=sticker_item
+                )
+            )
 
-            r = await conv.get_response()
+        except StickersetInvalidError:
 
-            if "invalid set" in r.text.lower():
-
-                # create new pack
-
-                await conv.send_message("/newpack")
-                await conv.get_response()
-
-                await conv.send_message(f"{username}'s Kang Pack")
-                r = await conv.get_response()
-
-                if "send me the sticker" not in r.text.lower():
-                    raise Exception("Sticker prompt not received")
-
-                await conv.send_file(sticker, force_document=True)
-
-                r = await conv.get_response()
-
-                await conv.send_message(emoji)
-                await conv.get_response()
-
-                await conv.send_message("/publish")
-                await conv.get_response()
-
-                await conv.send_message(short)
-                await conv.get_response()
-
-                await conv.send_message("/skip")
-                await conv.get_response()
-
-            else:
-
-                if "send me the sticker" not in r.text.lower():
-                    raise Exception("Sticker prompt not received")
-
-                await conv.send_file(sticker, force_document=True)
-
-                r = await conv.get_response()
-
-                await conv.send_message(emoji)
-                await conv.get_response()
-
-                await conv.send_message("/done")
-                await conv.get_response()
+            await event.client(
+                CreateStickerSetRequest(
+                    user_id=me.id,
+                    title=f"{username}'s Kang Pack",
+                    short_name=short,
+                    stickers=[sticker_item]
+                )
+            )
 
         increment(owner, pack_key)
 
@@ -232,17 +224,13 @@ async def handler(event, args):
             f"Sticker added to [{short}](https://t.me/addstickers/{short})"
         )
 
-    except YouBlockedUserError:
-
-        await respond(event, "Unblock @stickers first.")
-
     except Exception as e:
 
         await respond(event, f"Error: `{e}`")
 
     finally:
 
-        for f in [file_path, sticker]:
+        for f in [tmp_file, sticker_file]:
             try:
                 if f and os.path.exists(f):
                     os.remove(f)
