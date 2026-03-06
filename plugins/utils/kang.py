@@ -2,6 +2,7 @@ import os
 from telethon.errors import YouBlockedUserError
 from utils.respond import respond
 
+
 __plugin__ = {
     "name": "Kang",
     "category": "utils",
@@ -9,14 +10,13 @@ __plugin__ = {
         "Steal stickers and add them to your sticker packs.\n\n"
         "Usage:\n"
         "` .kang `\n"
-        "` .kang <emoji> `\n"
-        "` .kang <packname> `\n"
-        "` .kang <emoji> <packname> `"
+        "` .kang <emoji> `"
     ),
     "commands": {
-        "kang": "Add replied sticker/photo to your sticker pack"
+        "kang": "Add replied sticker to your sticker pack"
     },
 }
+
 
 DEFAULT_EMOJI = "🙂"
 
@@ -25,30 +25,20 @@ async def handler(event, args):
 
     reply = await event.get_reply_message()
 
-    if not reply:
-        return await respond(event, "Reply to a sticker or image.")
+    if not reply or not reply.sticker:
+        return await respond(event, "Reply to a sticker.")
 
     emoji = DEFAULT_EMOJI
-    packname = None
-
     if args:
-        if len(args) == 1:
-            if len(args[0]) <= 2:
-                emoji = args[0]
-            else:
-                packname = args[0]
-
-        elif len(args) >= 2:
-            emoji = args[0]
-            packname = args[1]
+        emoji = args[0]
 
     me = await event.client.get_me()
     username = me.username or str(me.id)
 
-    if not packname:
-        packname = f"{username}_kang_pack"
+    base_pack = f"{username}_kang"
+    pack_name = f"{base_pack}_1"
 
-    file = await event.client.download_media(reply)
+    file = await event.client.download_media(reply.sticker)
 
     try:
 
@@ -57,48 +47,64 @@ async def handler(event, args):
             await conv.send_message("/addsticker")
             r = await conv.get_response()
 
-            if "choose the sticker set" in r.text.lower():
-                await conv.send_message(packname)
-                r = await conv.get_response()
+            if r.buttons:
 
-                if "send me the sticker" in r.text.lower():
+                found = False
+
+                for row in r.buttons:
+                    for button in row:
+
+                        if username in button.text and "kang" in button.text:
+                            await conv.send_message(button.text)
+                            pack_name = button.text
+                            found = True
+                            break
+
+                    if found:
+                        break
+
+                if not found:
+
+                    await conv.send_message("/newpack")
+                    await conv.get_response()
+
+                    await conv.send_message(f"{username}'s Kang Pack")
+                    await conv.get_response()
+
                     await conv.send_file(file)
                     await conv.get_response()
 
                     await conv.send_message(emoji)
                     await conv.get_response()
 
-                    await conv.send_message("/done")
+                    await conv.send_message("/publish")
+                    await conv.get_response()
+
+                    await conv.send_message(pack_name)
+                    await conv.get_response()
 
                     await respond(
                         event,
-                        f"Sticker added\nhttps://t.me/addstickers/{packname}"
+                        f"Sticker pack created\nhttps://t.me/addstickers/{pack_name}"
                     )
+
                     return
 
-            if "invalid set" in r.text.lower() or "newpack" in r.text.lower():
+            await conv.send_file(file)
+            await conv.get_response()
 
-                await conv.send_message("/newpack")
-                await conv.get_response()
+            await conv.send_message(emoji)
+            await conv.get_response()
 
-                await conv.send_message(packname)
-                await conv.get_response()
+            await conv.send_message("/done")
 
-                await conv.send_file(file)
-                await conv.get_response()
-
-                await conv.send_message(emoji)
-                await conv.get_response()
-
-                await conv.send_message("/done")
-
-                await respond(
-                    event,
-                    f"Sticker pack created\nhttps://t.me/addstickers/{packname}"
-                )
+            await respond(
+                event,
+                f"Sticker added\nhttps://t.me/addstickers/{pack_name}"
+            )
 
     except YouBlockedUserError:
-        await respond(event, "Unblock @stickers and try again.")
+        await respond(event, "Unblock @stickers first.")
 
     except Exception as e:
         await respond(event, f"Error: `{e}`")
