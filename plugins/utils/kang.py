@@ -13,18 +13,17 @@ __plugin__ = {
         "Steal stickers and add them to your sticker packs.\n\n"
         "Usage:\n"
         "`.kang`\n"
-        "`.kang 😂`\n"
-        "`.kang packname`\n"
-        "`.kang 😂 packname`"
+        "`.kang <emoji>`\n"
+        "`.kang <packname>`\n"
+        "`.kang <emoji> <packname>`"
     ),
     "commands": {
-        "kang": "Add replied sticker to your pack"
+        "kang": "Add replied sticker to your sticker pack"
     },
 }
 
 
 DEFAULT_EMOJI = "🙂"
-PACK_LIMIT = 120
 
 
 def is_emoji(s):
@@ -43,6 +42,7 @@ def convert_to_webp(path):
     canvas.save(out, "WEBP")
 
     os.remove(path)
+
     return out
 
 
@@ -59,12 +59,14 @@ async def handler(event, args):
     if args:
 
         if len(args) == 1:
+
             if is_emoji(args[0]):
                 emoji = args[0]
             else:
                 packname = args[0]
 
         elif len(args) >= 2:
+
             emoji = args[0]
             packname = args[1]
 
@@ -76,8 +78,7 @@ async def handler(event, args):
     if packname:
         base_pack = f"{username}_{packname}"
 
-    pack_index = 1
-    pack_short = f"{base_pack}_{pack_index}"
+    pack_short = f"{base_pack}_1"
 
     file = None
     converted = None
@@ -98,42 +99,66 @@ async def handler(event, args):
             await conv.send_message("/addsticker")
             r = await conv.get_response()
 
-            # detect pack buttons
-            if r.buttons:
+            # create pack if none exist
+            if "choose a sticker set" not in r.text.lower():
 
-                packs = []
+                await conv.send_message("/newpack")
+                r = await conv.get_response()
 
-                for row in r.buttons:
-                    for button in row:
-                        if base_pack in button.text:
-                            packs.append(button.text)
+                await conv.send_message(f"{username} Kang Pack")
+                await conv.get_response()
 
-                if packs:
-                    pack_short = packs[-1]
+                await conv.send_file(converted, force_document=True)
+                await conv.get_response()
 
-                    await conv.send_message(pack_short)
-                    r = await conv.get_response()
+                await conv.send_message(emoji)
+                await conv.get_response()
 
-                    if "120" in r.text or "full" in r.text.lower():
-                        pack_index = len(packs) + 1
-                        pack_short = f"{base_pack}_{pack_index}"
-                        await conv.send_message("/newpack")
-                        await conv.get_response()
-                    else:
-                        pass
+                await conv.send_message("/publish")
+                await conv.get_response()
 
-                else:
-                    await conv.send_message("/newpack")
-                    await conv.get_response()
+                await conv.send_message(pack_short)
+                await conv.get_response()
 
-            else:
+                await conv.send_message("/done")
+                await conv.get_response()
+
+                return await respond(
+                    event,
+                    f"Sticker added to [{pack_short}](https://t.me/addstickers/{pack_short})"
+                )
+
+            # choose existing pack
+            await conv.send_message(pack_short)
+            r = await conv.get_response()
+
+            if "invalid set" in r.text.lower():
+
                 await conv.send_message("/newpack")
                 await conv.get_response()
 
-            if "choose a name" in r.text.lower() or "name for your set" in r.text.lower():
-
-                await conv.send_message(f"{username}'s Kang Pack")
+                await conv.send_message(f"{username} Kang Pack")
                 await conv.get_response()
+
+                await conv.send_file(converted, force_document=True)
+                await conv.get_response()
+
+                await conv.send_message(emoji)
+                await conv.get_response()
+
+                await conv.send_message("/publish")
+                await conv.get_response()
+
+                await conv.send_message(pack_short)
+                await conv.get_response()
+
+                await conv.send_message("/done")
+                await conv.get_response()
+
+                return await respond(
+                    event,
+                    f"Sticker added to [{pack_short}](https://t.me/addstickers/{pack_short})"
+                )
 
             await conv.send_file(converted, force_document=True)
             await conv.get_response()
@@ -141,23 +166,20 @@ async def handler(event, args):
             await conv.send_message(emoji)
             await conv.get_response()
 
-            await conv.send_message("/publish")
-            await conv.get_response()
-
-            await conv.send_message(pack_short)
-            await conv.get_response()
-
             await conv.send_message("/done")
+            await conv.get_response()
 
             await respond(
                 event,
-                f"Sticker added\nhttps://t.me/addstickers/{pack_short}"
+                f"Sticker added to [{pack_short}](https://t.me/addstickers/{pack_short})"
             )
 
     except YouBlockedUserError:
+
         await respond(event, "Unblock @stickers first.")
 
     except Exception as e:
+
         await respond(event, f"Error: `{e}`")
 
     finally:
