@@ -1,21 +1,11 @@
 import os
 import re
 import json
-import tempfile
-
 from PIL import Image
 
 from telethon.errors import StickersetInvalidError
-from telethon.tl.types import (
-    InputStickerSetShortName,
-    InputStickerSetItem
-)
-
-from telethon.tl.functions.stickers import (
-    CreateStickerSetRequest,
-    AddStickerToSetRequest
-)
-
+from telethon.tl.types import InputStickerSetShortName, InputStickerSetItem
+from telethon.tl.functions.stickers import CreateStickerSetRequest, AddStickerToSetRequest
 from telethon.tl.functions.messages import GetStickerSetRequest
 
 from utils.respond import respond
@@ -37,17 +27,37 @@ PACK_LIMIT = 120
 DB_KEY = "kang_packs"
 
 
-# ------------------------------------------------
-# Emoji detection
-# ------------------------------------------------
-
 def is_emoji(s):
     return bool(re.match(r"[\U00010000-\U0010ffff]", s))
 
 
-# ------------------------------------------------
-# DB helpers
-# ------------------------------------------------
+def convert_to_webp(path):
+
+    img = Image.open(path)
+
+    if img.mode != "RGBA":
+        img = img.convert("RGBA")
+
+    img.thumbnail((512, 512), Image.LANCZOS)
+
+    canvas = Image.new("RGBA", (512, 512), (0, 0, 0, 0))
+
+    x = (512 - img.width) // 2
+    y = (512 - img.height) // 2
+
+    canvas.paste(img, (x, y))
+
+    out = path + ".webp"
+
+    canvas.save(
+        out,
+        "WEBP",
+        lossless=True,
+        method=6
+    )
+
+    return out
+
 
 def load_db():
 
@@ -113,28 +123,6 @@ def increment(owner, key):
     save_db(data)
 
 
-# ------------------------------------------------
-# Image conversion
-# ------------------------------------------------
-
-def convert_to_webp(path):
-
-    img = Image.open(path).convert("RGBA")
-    img.thumbnail((512, 512))
-
-    canvas = Image.new("RGBA", (512, 512), (0, 0, 0, 0))
-    canvas.paste(img, ((512-img.width)//2, (512-img.height)//2))
-
-    out = path + ".webp"
-    canvas.save(out, "WEBP")
-
-    return out
-
-
-# ------------------------------------------------
-# Main handler
-# ------------------------------------------------
-
 async def handler(event, args):
 
     reply = await event.get_reply_message()
@@ -178,8 +166,20 @@ async def handler(event, args):
 
         ext = os.path.splitext(tmp_file)[1].lower()
 
-        if ext in [".tgs", ".webm", ".webp"]:
+        animated = False
+        videos = False
+
+        if ext == ".tgs":
             sticker_file = tmp_file
+            animated = True
+
+        elif ext == ".webm":
+            sticker_file = tmp_file
+            videos = True
+
+        elif ext == ".webp":
+            sticker_file = tmp_file
+
         else:
             sticker_file = convert_to_webp(tmp_file)
 
@@ -211,9 +211,11 @@ async def handler(event, args):
             await event.client(
                 CreateStickerSetRequest(
                     user_id=me.id,
-                    title=f"{username}'s Kang Pack",
+                    title=f"{username} Kang Pack",
                     short_name=short,
-                    stickers=[sticker_item]
+                    stickers=[sticker_item],
+                    animated=animated,
+                    videos=videos
                 )
             )
 
