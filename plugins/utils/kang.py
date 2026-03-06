@@ -1,10 +1,13 @@
 import os
 import re
 import tempfile
+
 from PIL import Image
 
 from telethon.errors import YouBlockedUserError
+
 from utils.respond import respond
+from db import db
 
 
 __plugin__ = {
@@ -25,13 +28,15 @@ __plugin__ = {
 
 
 DEFAULT_EMOJI = "🙂"
+PACK_LIMIT = 120
 
 
-def is_emoji(s: str) -> bool:
+def is_emoji(s: str):
     return bool(re.match(r"[\U00010000-\U0010ffff]", s))
 
 
-def convert_to_webp(path: str) -> str:
+def convert_to_webp(path):
+
     img = Image.open(path).convert("RGBA")
     img.thumbnail((512, 512))
 
@@ -44,6 +49,64 @@ def convert_to_webp(path: str) -> str:
     return out
 
 
+def get_pack(owner, pack_key):
+
+    data = db.get("kang_packs", {}).get(owner, {})
+
+    if pack_key in data:
+        return data[pack_key]
+
+    return None
+
+
+def save_pack(owner, pack_key, pack):
+
+    data = db.get("kang_packs", {})
+
+    if owner not in data:
+        data[owner] = {}
+
+    data[owner][pack_key] = pack
+
+    db.set("kang_packs", data)
+
+
+def increment_count(owner, pack_key):
+
+    data = db.get("kang_packs", {})
+
+    pack = data[owner][pack_key]
+
+    pack["count"] += 1
+
+    db.set("kang_packs", data)
+
+
+def next_pack(owner, pack_key, username):
+
+    data = db.get("kang_packs", {})
+
+    if owner not in data:
+        data[owner] = {}
+
+    index = 1
+
+    if pack_key in data[owner]:
+        index = data[owner][pack_key]["index"] + 1
+
+    short = f"{username}_{pack_key}_{index}"
+
+    data[owner][pack_key] = {
+        "short": short,
+        "count": 0,
+        "index": index,
+    }
+
+    db.set("kang_packs", data)
+
+    return short
+
+
 async def handler(event, args):
 
     reply = await event.get_reply_message()
@@ -52,7 +115,7 @@ async def handler(event, args):
         return await respond(event, "Reply to a sticker or image.")
 
     emoji = DEFAULT_EMOJI
-    pack = None
+    pack_key = "kang"
 
     if args:
 
@@ -61,23 +124,29 @@ async def handler(event, args):
             if is_emoji(args[0]):
                 emoji = args[0]
             else:
-                pack = args[0]
+                pack_key = args[0]
 
         elif len(args) >= 2:
 
             emoji = args[0]
-            pack = args[1]
+            pack_key = args[1]
 
     me = await event.client.get_me()
-    username = me.username or str(me.id)
 
-    if not pack:
-        pack = f"{username}_kang_1"
+    username = me.username or str(me.id)
+    owner = str(me.id)
+
+    pack = get_pack(owner, pack_key)
+
+    if pack and pack["count"] >= PACK_LIMIT:
+        short = next_pack(owner, pack_key, username)
+    elif pack:
+        short = pack["short"]
     else:
-        pack = f"{username}_{pack}"
+        short = next_pack(owner, pack_key, username)
 
     file_path = None
-    sticker_path = None
+    sticker = None
 
     try:
 
@@ -86,27 +155,27 @@ async def handler(event, args):
         ext = os.path.splitext(file_path)[1].lower()
 
         if ext in [".tgs", ".webm", ".webp"]:
-            sticker_path = file_path
+            sticker = file_path
         else:
-            sticker_path = convert_to_webp(file_path)
+            sticker = convert_to_webp(file_path)
 
         async with event.client.conversation("Stickers", timeout=120) as conv:
 
             await conv.send_message("/addsticker")
             r = await conv.get_response()
 
-            await conv.send_message(pack)
+            await conv.send_message(short)
             r = await conv.get_response()
 
-            if "invalid" in r.text.lower() or "choose the sticker set" not in r.text.lower():
+            if "invalid set" in r.text.lower():
 
                 await conv.send_message("/newpack")
                 await conv.get_response()
 
-                await conv.send_message(f"{username} Kang Pack")
+                await conv.send_message(f"{username}'s Kang Pack")
                 await conv.get_response()
 
-                await conv.send_file(sticker_path, force_document=True)
+                await conv.send_file(sticker, force_document=True)
                 await conv.get_response()
 
                 await conv.send_message(emoji)
@@ -115,7 +184,7 @@ async def handler(event, args):
                 await conv.send_message("/publish")
                 await conv.get_response()
 
-                await conv.send_message(pack)
+                await conv.send_message(short)
                 await conv.get_response()
 
                 await conv.send_message("/skip")
@@ -123,7 +192,7 @@ async def handler(event, args):
 
             else:
 
-                await conv.send_file(sticker_path, force_document=True)
+                await conv.send_file(sticker, force_document=True)
                 await conv.get_response()
 
                 await conv.send_message(emoji)
@@ -132,9 +201,11 @@ async def handler(event, args):
                 await conv.send_message("/done")
                 await conv.get_response()
 
+        increment_count(owner, pack_key)
+
         await respond(
             event,
-            f"Sticker added to [{pack}](https://t.me/addstickers/{pack})"
+            f"Sticker added to [{short}](https://t.me/addstickers/{short})"
         )
 
     except YouBlockedUserError:
@@ -147,7 +218,7 @@ async def handler(event, args):
 
     finally:
 
-        for f in [file_path, sticker_path]:
+        for f in [file_path, sticker]:
             try:
                 if f and os.path.exists(f):
                     os.remove(f)
