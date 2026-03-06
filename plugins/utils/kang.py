@@ -1,13 +1,12 @@
 import os
+import json
 import re
-import tempfile
-
 from PIL import Image
 
 from telethon.errors import YouBlockedUserError
 
 from utils.respond import respond
-from db import db
+from db.core import db
 
 
 __plugin__ = {
@@ -29,9 +28,10 @@ __plugin__ = {
 
 DEFAULT_EMOJI = "🙂"
 PACK_LIMIT = 120
+DB_KEY = "kang_packs"
 
 
-def is_emoji(s: str):
+def is_emoji(s):
     return bool(re.match(r"[\U00010000-\U0010ffff]", s))
 
 
@@ -41,7 +41,7 @@ def convert_to_webp(path):
     img.thumbnail((512, 512))
 
     canvas = Image.new("RGBA", (512, 512), (0, 0, 0, 0))
-    canvas.paste(img, ((512 - img.width) // 2, (512 - img.height) // 2))
+    canvas.paste(img, ((512-img.width)//2, (512-img.height)//2))
 
     out = path + ".webp"
     canvas.save(out, "WEBP")
@@ -49,62 +49,72 @@ def convert_to_webp(path):
     return out
 
 
-def get_pack(owner, pack_key):
+def load_packs():
 
-    data = db.get("kang_packs", {}).get(owner, {})
+    data = db.get(DB_KEY)
 
-    if pack_key in data:
-        return data[pack_key]
+    if not data:
+        return {}
 
-    return None
+    try:
+        return json.loads(data)
+    except:
+        return {}
 
 
-def save_pack(owner, pack_key, pack):
+def save_packs(data):
 
-    data = db.get("kang_packs", {})
+    db.set(DB_KEY, json.dumps(data))
+
+
+def get_pack(owner, pack_key, username):
+
+    data = load_packs()
 
     if owner not in data:
         data[owner] = {}
 
-    data[owner][pack_key] = pack
+    if pack_key not in data[owner]:
 
-    db.set("kang_packs", data)
+        short = f"{username}_{pack_key}_1"
+
+        data[owner][pack_key] = {
+            "short": short,
+            "count": 0,
+            "index": 1
+        }
+
+        save_packs(data)
+
+        return data[owner][pack_key]
+
+    return data[owner][pack_key]
 
 
-def increment_count(owner, pack_key):
+def rotate_pack(owner, pack_key, username):
 
-    data = db.get("kang_packs", {})
+    data = load_packs()
 
     pack = data[owner][pack_key]
 
-    pack["count"] += 1
+    if pack["count"] >= PACK_LIMIT:
 
-    db.set("kang_packs", data)
+        pack["index"] += 1
+        pack["count"] = 0
+        pack["short"] = f"{username}_{pack_key}_{pack['index']}"
+
+        save_packs(data)
+
+    return pack
 
 
-def next_pack(owner, pack_key, username):
+def increment(owner, pack_key):
 
-    data = db.get("kang_packs", {})
+    data = load_packs()
 
-    if owner not in data:
-        data[owner] = {}
+    data[owner][pack_key]["count"] += 1
 
-    index = 1
-
-    if pack_key in data[owner]:
-        index = data[owner][pack_key]["index"] + 1
-
-    short = f"{username}_{pack_key}_{index}"
-
-    data[owner][pack_key] = {
-        "short": short,
-        "count": 0,
-        "index": index,
-    }
-
-    db.set("kang_packs", data)
-
-    return short
+    save_packs(data)
 
 
 async def handler(event, args):
@@ -126,7 +136,7 @@ async def handler(event, args):
             else:
                 pack_key = args[0]
 
-        elif len(args) >= 2:
+        else:
 
             emoji = args[0]
             pack_key = args[1]
@@ -136,14 +146,10 @@ async def handler(event, args):
     username = me.username or str(me.id)
     owner = str(me.id)
 
-    pack = get_pack(owner, pack_key)
+    pack = get_pack(owner, pack_key, username)
+    pack = rotate_pack(owner, pack_key, username)
 
-    if pack and pack["count"] >= PACK_LIMIT:
-        short = next_pack(owner, pack_key, username)
-    elif pack:
-        short = pack["short"]
-    else:
-        short = next_pack(owner, pack_key, username)
+    short = pack["short"]
 
     file_path = None
     sticker = None
@@ -167,7 +173,7 @@ async def handler(event, args):
             await conv.send_message(short)
             r = await conv.get_response()
 
-            if "invalid set" in r.text.lower():
+            if "invalid" in r.text.lower():
 
                 await conv.send_message("/newpack")
                 await conv.get_response()
@@ -201,7 +207,7 @@ async def handler(event, args):
                 await conv.send_message("/done")
                 await conv.get_response()
 
-        increment_count(owner, pack_key)
+        increment(owner, pack_key)
 
         await respond(
             event,
