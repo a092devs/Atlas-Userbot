@@ -1,164 +1,108 @@
 import os
-import PIL.Image as Image
-
-from telethon.tl.functions.messages import GetStickerSetRequest
-from telethon.tl.functions.stickers import CreateStickerSetRequest, AddStickerToSetRequest
-from telethon.tl.types import InputStickerSetShortName, InputStickerSetItem
-
+from telethon.errors import YouBlockedUserError
 from utils.respond import respond
-
 
 __plugin__ = {
     "name": "Kang",
     "category": "utils",
     "description": (
-        "Steal stickers or convert images into stickers.\n\n"
+        "Steal stickers and add them to your sticker packs.\n\n"
         "Usage:\n"
         "` .kang `\n"
         "` .kang <emoji> `\n"
         "` .kang <packname> `\n"
-        "` .kang <emoji> <packname> `\n"
-        "` .kangp <pack_number> `"
+        "` .kang <emoji> <packname> `"
     ),
     "commands": {
-        "kang": "Add sticker/image to your pack",
-        "kangp": "Add sticker to specific pack number",
+        "kang": "Add replied sticker/photo to your sticker pack"
     },
 }
 
-
 DEFAULT_EMOJI = "🙂"
-PACK_LIMIT = 120
-
-
-def convert_photo(path):
-    img = Image.open(path).convert("RGBA")
-    img.thumbnail((512, 512))
-
-    canvas = Image.new("RGBA", (512, 512), (0, 0, 0, 0))
-    x = (512 - img.width) // 2
-    y = (512 - img.height) // 2
-    canvas.paste(img, (x, y))
-
-    out = path + ".webp"
-    canvas.save(out, "WEBP")
-
-    os.remove(path)
-    return out
 
 
 async def handler(event, args):
 
-    cmd = event.raw_text.split()[0].lstrip("./")
     reply = await event.get_reply_message()
 
     if not reply:
         return await respond(event, "Reply to a sticker or image.")
 
     emoji = DEFAULT_EMOJI
-    custom_pack = None
-    forced_pack = None
+    packname = None
 
-    if cmd == "kangp":
-        if not args:
-            return await respond(event, "Usage: `.kangp <pack_number>`")
-        forced_pack = int(args[0])
-
-    else:
-        if args:
-            if len(args) == 1:
-                if len(args[0]) <= 2:
-                    emoji = args[0]
-                else:
-                    custom_pack = args[0]
-
-            elif len(args) >= 2:
+    if args:
+        if len(args) == 1:
+            if len(args[0]) <= 2:
                 emoji = args[0]
-                custom_pack = args[1]
+            else:
+                packname = args[0]
+
+        elif len(args) >= 2:
+            emoji = args[0]
+            packname = args[1]
 
     me = await event.client.get_me()
     username = me.username or str(me.id)
 
-    base_pack = f"{username}_kang_pack"
+    if not packname:
+        packname = f"{username}_kang_pack"
 
-    if custom_pack:
-        base_pack = f"{username}_{custom_pack}"
-
-    pack_name = base_pack if not forced_pack else f"{base_pack}_{forced_pack}"
-
-    if not forced_pack:
-
-        index = 1
-
-        while True:
-            try:
-                stickerset = await event.client(
-                    GetStickerSetRequest(
-                        stickerset=InputStickerSetShortName(pack_name),
-                        hash=0
-                    )
-                )
-
-                if len(stickerset.documents) >= PACK_LIMIT:
-                    index += 1
-                    pack_name = f"{base_pack}_{index}"
-                    continue
-
-                break
-
-            except Exception:
-                break
-
-    ext = reply.file.ext or ""
-
-    if ext in [".tgs", ".webm"]:
-        file_path = await event.client.download_media(reply)
-    else:
-        file_path = await event.client.download_media(reply)
-
-        if ext not in [".webp"]:
-            file_path = convert_photo(file_path)
-
-    uploaded = await event.client.upload_file(file_path)
-
-    if os.path.exists(file_path):
-        os.remove(file_path)
+    file = await event.client.download_media(reply)
 
     try:
 
-        await event.client(
-            GetStickerSetRequest(
-                stickerset=InputStickerSetShortName(pack_name),
-                hash=0
-            )
-        )
+        async with event.client.conversation("Stickers", timeout=120) as conv:
 
-        await event.client(
-            AddStickerToSetRequest(
-                stickerset=InputStickerSetShortName(pack_name),
-                sticker=InputStickerSetItem(
-                    document=uploaded,
-                    emoji=emoji
-                )
-            )
-        )
+            await conv.send_message("/addsticker")
+            r = await conv.get_response()
 
-        await respond(event, f"Sticker added\nhttps://t.me/addstickers/{pack_name}")
+            if "choose the sticker set" in r.text.lower():
+                await conv.send_message(packname)
+                r = await conv.get_response()
 
-    except Exception:
+                if "send me the sticker" in r.text.lower():
+                    await conv.send_file(file)
+                    await conv.get_response()
 
-        await event.client(
-            CreateStickerSetRequest(
-                user_id=me.id,
-                title=f"{username}'s Kang Pack",
-                short_name=pack_name,
-                stickers=[
-                    InputStickerSetItem(
-                        document=uploaded,
-                        emoji=emoji
+                    await conv.send_message(emoji)
+                    await conv.get_response()
+
+                    await conv.send_message("/done")
+
+                    await respond(
+                        event,
+                        f"Sticker added\nhttps://t.me/addstickers/{packname}"
                     )
-                ]
-            )
-        )
+                    return
 
-        await respond(event, f"Sticker pack created\nhttps://t.me/addstickers/{pack_name}")
+            if "invalid set" in r.text.lower() or "newpack" in r.text.lower():
+
+                await conv.send_message("/newpack")
+                await conv.get_response()
+
+                await conv.send_message(packname)
+                await conv.get_response()
+
+                await conv.send_file(file)
+                await conv.get_response()
+
+                await conv.send_message(emoji)
+                await conv.get_response()
+
+                await conv.send_message("/done")
+
+                await respond(
+                    event,
+                    f"Sticker pack created\nhttps://t.me/addstickers/{packname}"
+                )
+
+    except YouBlockedUserError:
+        await respond(event, "Unblock @stickers and try again.")
+
+    except Exception as e:
+        await respond(event, f"Error: `{e}`")
+
+    finally:
+        if file and os.path.exists(file):
+            os.remove(file)
