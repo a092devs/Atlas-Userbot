@@ -11,14 +11,10 @@ __plugin__ = {
     "description": (
         "Steal stickers and add them to your sticker pack.\n\n"
         "Usage:\n"
-        ".kang\n"
-        "Reply to a sticker to add it to your pack.\n\n"
-        ".kang 😂\n"
-        "Reply to a sticker and set a custom emoji.\n\n"
-        ".kang packname\n"
-        "Add sticker to a specific pack.\n\n"
-        ".kang 😂 packname\n"
-        "Set emoji and custom pack name."
+        "` .kang `\n"
+        "` .kang <emoji> `\n"
+        "` .kang <packname> `\n"
+        "` .kang <emoji> <packname> `"
     ),
     "commands": {
         "kang": "Add a replied sticker to your pack",
@@ -51,7 +47,6 @@ async def handler(event, args):
             pack = args[1]
 
     me = await event.client.get_me()
-
     username = me.username or str(me.id)
 
     pack_name = f"{username}_kang_pack"
@@ -70,7 +65,6 @@ async def handler(event, args):
         )
 
     except Exception:
-
         await event.client(
             CreateStickerSetRequest(
                 user_id=me.id,
@@ -88,7 +82,6 @@ async def handler(event, args):
         return await respond(event, "Sticker pack created and sticker added.")
 
     try:
-
         await event.client(
             AddStickerToSetRequest(
                 stickerset=InputStickerSetShortName(pack_name),
