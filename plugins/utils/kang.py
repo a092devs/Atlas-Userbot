@@ -16,9 +16,9 @@ __plugin__ = {
         "Steal stickers and add them to your sticker packs.\n\n"
         "Usage:\n"
         "` .kang `\n"
-        "` .kang <emoji> `\n"
-        "` .kang <packname> `\n"
-        "` .kang <emoji> <packname> `"
+        "` .kang <emoji>`\n"
+        "` .kang <packname>`\n"
+        "` .kang <emoji> <packname>`"
     ),
     "commands": {
         "kang": "Add replied sticker to your pack",
@@ -30,6 +30,10 @@ DEFAULT_EMOJI = "🙂"
 PACK_LIMIT = 120
 DB_KEY = "kang_packs"
 
+
+# ---------------------------
+# Helpers
+# ---------------------------
 
 def is_emoji(s):
     return bool(re.match(r"[\U00010000-\U0010ffff]", s))
@@ -49,73 +53,72 @@ def convert_to_webp(path):
     return out
 
 
-def load_packs():
+def load_db():
 
-    data = db.get(DB_KEY)
+    raw = db.get(DB_KEY)
 
-    if not data:
+    if not raw:
         return {}
 
     try:
-        return json.loads(data)
+        return json.loads(raw)
     except:
         return {}
 
 
-def save_packs(data):
+def save_db(data):
 
     db.set(DB_KEY, json.dumps(data))
 
 
-def get_pack(owner, pack_key, username):
+def get_pack(owner, key, username):
 
-    data = load_packs()
+    data = load_db()
 
     if owner not in data:
         data[owner] = {}
 
-    if pack_key not in data[owner]:
+    if key not in data[owner]:
 
-        short = f"{username}_{pack_key}_1"
+        short = f"{username}_{key}_1"
 
-        data[owner][pack_key] = {
+        data[owner][key] = {
             "short": short,
             "count": 0,
             "index": 1
         }
 
-        save_packs(data)
+        save_db(data)
 
-        return data[owner][pack_key]
-
-    return data[owner][pack_key]
+    return data[owner][key]
 
 
-def rotate_pack(owner, pack_key, username):
+def rotate_pack(owner, key, username):
 
-    data = load_packs()
-
-    pack = data[owner][pack_key]
+    data = load_db()
+    pack = data[owner][key]
 
     if pack["count"] >= PACK_LIMIT:
 
         pack["index"] += 1
         pack["count"] = 0
-        pack["short"] = f"{username}_{pack_key}_{pack['index']}"
+        pack["short"] = f"{username}_{key}_{pack['index']}"
 
-        save_packs(data)
+        save_db(data)
 
     return pack
 
 
-def increment(owner, pack_key):
+def increment(owner, key):
 
-    data = load_packs()
+    data = load_db()
+    data[owner][key]["count"] += 1
+    save_db(data)
 
-    data[owner][pack_key]["count"] += 1
 
-    save_packs(data)
-
+# ---------------------------
+# Main Handler
+# ---------------------------
 
 async def handler(event, args):
 
@@ -168,21 +171,32 @@ async def handler(event, args):
         async with event.client.conversation("Stickers", timeout=120) as conv:
 
             await conv.send_message("/addsticker")
+
             r = await conv.get_response()
+
+            if "choose" not in r.text.lower():
+                raise Exception("Unexpected response from @stickers")
 
             await conv.send_message(short)
+
             r = await conv.get_response()
 
-            if "invalid" in r.text.lower():
+            if "invalid set" in r.text.lower():
+
+                # create new pack
 
                 await conv.send_message("/newpack")
                 await conv.get_response()
 
                 await conv.send_message(f"{username}'s Kang Pack")
-                await conv.get_response()
+                r = await conv.get_response()
+
+                if "send me the sticker" not in r.text.lower():
+                    raise Exception("Sticker prompt not received")
 
                 await conv.send_file(sticker, force_document=True)
-                await conv.get_response()
+
+                r = await conv.get_response()
 
                 await conv.send_message(emoji)
                 await conv.get_response()
@@ -198,8 +212,12 @@ async def handler(event, args):
 
             else:
 
+                if "send me the sticker" not in r.text.lower():
+                    raise Exception("Sticker prompt not received")
+
                 await conv.send_file(sticker, force_document=True)
-                await conv.get_response()
+
+                r = await conv.get_response()
 
                 await conv.send_message(emoji)
                 await conv.get_response()
