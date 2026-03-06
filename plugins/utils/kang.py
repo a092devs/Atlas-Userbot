@@ -166,20 +166,8 @@ async def handler(event, args):
 
         ext = os.path.splitext(tmp_file)[1].lower()
 
-        animated = False
-        videos = False
-
-        if ext == ".tgs":
+        if ext in [".tgs", ".webm", ".webp"]:
             sticker_file = tmp_file
-            animated = True
-
-        elif ext == ".webm":
-            sticker_file = tmp_file
-            videos = True
-
-        elif ext == ".webp":
-            sticker_file = tmp_file
-
         else:
             sticker_file = convert_to_webp(tmp_file)
 
@@ -213,9 +201,7 @@ async def handler(event, args):
                     user_id=me.id,
                     title=f"{username} Kang Pack",
                     short_name=short,
-                    stickers=[sticker_item],
-                    animated=animated,
-                    videos=videos
+                    stickers=[sticker_item]
                 )
             )
 
